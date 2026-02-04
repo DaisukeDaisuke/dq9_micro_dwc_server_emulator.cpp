@@ -74,7 +74,7 @@ static void run_http_server(int port) {
 
 static const int DEFAULT_PORT = 443;
 static const size_t RECV_BUF = 8192;
-static const size_t SEND_CHUNK = 768; // tuneable: 512..1024
+static const size_t SEND_CHUNK = 768; // tuneable: 512..1024 通らないなら1024にする
 
 struct SSL_CTX_RAII {
     SSL_CTX* ctx;
