@@ -1,0 +1,1 @@
+docker exec -it dq9-server /bin/bash

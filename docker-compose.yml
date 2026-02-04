@@ -1,0 +1,22 @@
+
+version: '3.5'
+services:
+  dnsmasq:
+    container_name: dnsmasq
+    image: strm/dnsmasq
+    restart: always
+    ports:
+      - "${LOCAL_IP}:53:53/udp"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    command: ["--address=/nintendowifi.net/${LOCAL_IP}"]
+  dq9-server:
+    container_name: dq9-server
+    build:
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./dlc:/run/dlc
+    ports:
+      - "${LOCAL_IP}:80:80/tcp"
+      - "${LOCAL_IP}:443:443/tcp"

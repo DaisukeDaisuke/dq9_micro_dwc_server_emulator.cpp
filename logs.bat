@@ -1,0 +1,1 @@
+docker logs -f dq9-server
