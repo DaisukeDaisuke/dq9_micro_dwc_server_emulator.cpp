@@ -20,6 +20,8 @@
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/pem.h>
+#include <openssl/provider.h>
 #include <cctype>
 
 #include "dns.h"
@@ -34,7 +36,7 @@ static const size_t MAX_BODY_BYTES = 5u * 1024u * 1024u; // 100MB上限
 
 
 
-static void ssl_write_split(SSL* ssl, const std::vector<uint8_t>& data) {
+void ssl_write_split(SSL* ssl, const std::vector<uint8_t>& data) {
     size_t off = 0;
     while (off < data.size()) {
         size_t n = std::min(SEND_CHUNK, data.size() - off);
@@ -50,7 +52,7 @@ static void ssl_write_split(SSL* ssl, const std::vector<uint8_t>& data) {
     }
 }
 
-static std::string read_until_double_crlf(SSL* ssl, std::string &out_body) {
+std::string read_until_double_crlf(SSL* ssl, std::string &out_body) {
     std::string buf;
     std::vector<char> tmp(RECV_BUF);
     while (true) {
@@ -67,7 +69,7 @@ static std::string read_until_double_crlf(SSL* ssl, std::string &out_body) {
     return buf;
 }
 
-static std::map<std::string,std::string> parse_headers(const std::string& header_block, std::string& request_line) {
+std::map<std::string,std::string> parse_headers(const std::string& header_block, std::string& request_line) {
     std::istringstream ss(header_block);
     std::string line;
     bool first = true;
@@ -106,10 +108,10 @@ struct SSL_RAII {
 };
 
 
-static void init_openssl() {
-    SSL_library_init();
-    SSL_load_error_strings();
-    OpenSSL_add_all_algorithms();
+void init_openssl() {
+    OPENSSL_init_ssl(OPENSSL_INIT_SSL_DEFAULT, nullptr);
+    OSSL_PROVIDER_load(nullptr, "default");
+    OSSL_PROVIDER_load(nullptr, "legacy");
 }
 
 int SSLHelper::Main(ServerContext& ctx2) {
@@ -136,7 +138,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
 
     // ★ここ：SSLv3ハンドシェイク処理は維持（消さない）
-    SSL_CTX* ctx = SSL_CTX_new(SSLv3_server_method());
+    SSL_CTX* ctx = SSL_CTX_new(TLS_server_method());
     if (!ctx) {
         std::cerr << "SSL_CTX_new failed" << std::endl;
         ERR_print_errors_fp(stderr);
@@ -144,6 +146,8 @@ int SSLHelper::Main(ServerContext& ctx2) {
     }
     SSL_CTX_RAII ctx_raii(ctx);
     SSL_CTX_set_quiet_shutdown(ctx, 1);
+    SSL_CTX_set_min_proto_version(ctx, SSL3_VERSION);
+    SSL_CTX_set_max_proto_version(ctx, SSL3_VERSION);
 
     term << "[https] Initializing OpenSSL: ok" << std::endl;
 
@@ -157,13 +161,19 @@ int SSLHelper::Main(ServerContext& ctx2) {
     term << "[https] Initializing server.crt and server.key: ok" << std::endl;
 
     auto handle = fopen(cert_nwc_file, "r");
+    if (!handle) {
+        term << "Certificate file open failed: " << cert_nwc_file << std::endl;
+        return 1;
+    }
 
-    if (SSL_CTX_add_extra_chain_cert(
-        ctx,
-        PEM_read_X509(handle, nullptr, nullptr, nullptr)
-    ) != 1) {
+    X509* chain_cert = PEM_read_X509(handle, nullptr, nullptr, nullptr);
+    if (!chain_cert || SSL_CTX_add_extra_chain_cert(ctx, chain_cert) != 1) {
+        if (chain_cert) {
+            X509_free(chain_cert);
+        }
         term << "Certificate/key load failed2" << std::endl;
         ERR_print_errors_fp(stderr);
+        fclose(handle);
         return 1;
     }
 
