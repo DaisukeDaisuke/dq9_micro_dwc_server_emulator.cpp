@@ -19,7 +19,7 @@ void on_sigint(int)
         terminal term;
         g_ctx->stop = true;
 
-        term << "[watchdog] stopping...";
+        term << "[watchdog] stopping..." << std::endl;
 
         if (g_ctx->dns_sock   != kInvalidSocket) socket_close(g_ctx->dns_sock);
         if (g_ctx->http_sock  != kInvalidSocket) socket_close(g_ctx->http_sock);
@@ -30,10 +30,12 @@ void on_sigint(int)
 void wait_for_input(ServerContext& ctx)
 {
     terminal term;
+    term << "[watchdog] Pressing any key will be stop" << std::endl;
+
     std::string line;
     std::getline(std::cin, line);
 
-    term << "[watchdog] stopping...";
+    term << "[watchdog] stopping..." << std::endl;
 
     ctx.stop = true;
 

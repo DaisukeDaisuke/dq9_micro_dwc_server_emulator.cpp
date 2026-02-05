@@ -142,9 +142,14 @@ static std::vector<uint8_t> build_dns_response_a(
 }
 
 void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v4, const std::string& suffix = "nintendowifi.net"){
-    sockets_init_once();
+    auto port = 53;
 
     terminal term;
+    term << "[dns] Starting server on port " << port << std::endl;
+
+    sockets_init_once();
+
+
 
     socket_t s = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (s == kInvalidSocket) { perror("dns socket"); return; }
@@ -154,16 +159,22 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
 
     ctx.dns_sock = s;
 
+    term << "[dns] Initializing socket: ok" << std::endl;
+
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(53);
+    addr.sin_port = htons(port);
+
+
 
     if (bind(s, (sockaddr*)&addr, sizeof(addr)) != 0) {
         perror("dns bind");
         socket_close(s);
         return;
     }
+
+    term << "[dns] Binding socket: ok" << std::endl;
 
     uint32_t ip_be = 0;
 #ifdef _WIN32
@@ -177,7 +188,7 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
         return;
     }
 
-    term << "[dns] DNS (UDP) listening on :53, spoof *." << suffix << " -> " << spoof_ip_v4 << "\n";
+    term << ("[dns] DNS (UDP) listening on :53, spoof *." + suffix + " -> " + spoof_ip_v4) << std::endl;
 
     while (true) {
         uint8_t buf[512];

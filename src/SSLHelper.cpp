@@ -133,6 +133,8 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
     init_openssl();
 
+
+
     // ★ここ：SSLv3ハンドシェイク処理は維持（消さない）
     SSL_CTX* ctx = SSL_CTX_new(SSLv3_server_method());
     if (!ctx) {
@@ -141,9 +143,9 @@ int SSLHelper::Main(ServerContext& ctx2) {
         return 1;
     }
     SSL_CTX_RAII ctx_raii(ctx);
+    SSL_CTX_set_quiet_shutdown(ctx, 1);
 
-    term << "[https] init" << std::endl;
-
+    term << "[https] Initializing OpenSSL: ok" << std::endl;
 
     if (!SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) ||
         !SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM)) {
@@ -152,9 +154,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
         return 1;
     }
 
-    SSL_CTX_set_quiet_shutdown(ctx, 1);
-
-    term << "[https] init2" << std::endl;
+    term << "[https] Initializing server.crt and server.key: ok" << std::endl;
 
     auto handle = fopen(cert_nwc_file, "r");
 
@@ -169,13 +169,17 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
     fclose(handle);
 
-    term << "[https] init3" << std::endl;
+    term << "[https] Initializing nwc.crt: ok" << std::endl;
+
+
 
     if (!SSL_CTX_set_cipher_list(ctx, "RC4-SHA:RC4-MD5")) {
         term << "Failed to set cipher list" << std::endl;
         ERR_print_errors_fp(stderr);
         return 1;
     }
+
+    term << "[https] Initializing Cipher: ok" << std::endl;
 
     // socket setup
     socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -189,8 +193,15 @@ int SSLHelper::Main(ServerContext& ctx2) {
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons((uint16_t)port);
 
+    term << "[https] Initializing socket: ok" << std::endl;
+
+
+
     if (bind(sock, (sockaddr*)&addr, sizeof(addr)) != 0) { perror("bind"); socket_close(sock); return 1; }
     if (listen(sock, 8) != 0) { perror("listen"); socket_close(sock); return 1; }
+
+    term << "[https] Binding socket: ok" << std::endl;
+
     term << "[https] Listening on port " << port << " (SSLv3 + RC4)" << std::endl;
 
     ctx2.https_sock = sock;
@@ -207,7 +218,6 @@ int SSLHelper::Main(ServerContext& ctx2) {
             socket_close(client);
             break;
         }
-        term << "[https] Accepted connection... SSL handshake: " << std::flush;
 
         SSL* ssl = SSL_new(ctx);
         if (!ssl) { socket_close(client); continue; }
@@ -222,7 +232,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
             socket_close(client);
             continue;
         }
-        term << "ok" << std::endl;
+        term << "[https] Accepted connection... SSL handshake: ok" << std::endl;
 
         std::string leftover_body;
         std::string header_block = read_until_double_crlf(ssl, leftover_body);

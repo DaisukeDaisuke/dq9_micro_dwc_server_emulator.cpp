@@ -19,17 +19,20 @@
 #include "terminal.h"
 
 void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
-    sockets_init_once();
-
     terminal term;
+
+    term << "[http] Starting server on port " << port << std::endl;
+
+    sockets_init_once();
 
     socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
     if (sock == kInvalidSocket) { perror("http socket"); return; }
 
     ctx.http_sock = sock;
-
     int opt = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+
+    term << "[http] Initializing socket: ok" << std::endl;
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -41,11 +44,18 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
         socket_close(sock);
         return;
     }
+
+    term << "[http] Binding socket: ok" << std::endl;
+
+
+
     if (listen(sock, 8) != 0) {
         perror("http listen");
         socket_close(sock);
         return;
     }
+
+    term << "[http] Listening on port " << port << ": ok" << std::endl;
 
     term << "[http] HTTP listening on port " << port << std::endl;
 

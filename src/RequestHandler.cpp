@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "FileHelper.h"
+#include "terminal.h"
 
 
 bool base64_decode_star_as_pad(const std::string& input, std::string& output) {
@@ -278,6 +279,7 @@ void RequestHandler::handle_request(const std::string& request_line,
         ss >> method >> path >> httpv;
     }
 
+    terminal term;
 
 
     // Very simplified: if Host==nas.nintendowifi.net => return LOGIN like python
@@ -287,7 +289,7 @@ void RequestHandler::handle_request(const std::string& request_line,
         std::string action = extract_and_decode_param(sbody, "action");
         std::string gamecd = extract_and_decode_param(sbody, "gamecd");
         if (action == "login" || action == "LOGIN") {
-            std::cerr << "["<< gamecd << "] Processing Login... " << std::endl;
+            term << "[https]["<< gamecd << "] Processing Login... " << std::endl;
             std::string b =
                     "returncd=" + base64_encode_replace("001") +
                     "&date=" + base64_encode_replace("Fri, 01 Jan 2010 00:00:00 GMT") +
@@ -306,7 +308,7 @@ void RequestHandler::handle_request(const std::string& request_line,
             return;
         }
         if (action == "svcloc" || action == "SVCLOC") {
-            std::cerr << "[" << gamecd << "] request cdn url" << std::endl;
+            term << "[https][" << gamecd << "] request cdn url" << std::endl;
             std::string svc = extract_and_decode_param(sbody, "svc");
             std::string b = "returncd=" + base64_encode_replace("007") +
                             "&statusdata=" + base64_encode_replace("Y") +
@@ -344,7 +346,7 @@ void RequestHandler::handle_request(const std::string& request_line,
             }
 
             if (action == "count" || action == "COUNT") {
-                std::cerr << "["<< gamecd <<"] sending count..."  << std::endl;
+                 term << "[https]["<< gamecd <<"] sending count..."  << std::endl;
 
                 std::string path = "./dlc/" + gamecd + "/_list.txt";
                 std::string data = FileHelper::readAll(path);
@@ -370,7 +372,7 @@ void RequestHandler::handle_request(const std::string& request_line,
                 std::string num = extract_and_decode_param(sbody, "num");
                 std::string offset = extract_and_decode_param(sbody, "offset");
 
-                std::cerr << "["<< gamecd <<"] sending list... " << std::endl;
+                 term << "[https]["<< gamecd <<"] sending list... " << std::endl;
 
                 std::string path = "./dlc/" + gamecd + "/_list.txt";
                 std::string data = FileHelper::readAll(path);
@@ -403,7 +405,7 @@ void RequestHandler::handle_request(const std::string& request_line,
                     return;
                 }
 
-                std::cerr << "["<< gamecd <<"] sending " << contents << "..." << std::endl;
+                 term << "[https]["<< gamecd <<"] sending " << contents << "..." << std::endl;
 
                 // return file (ensure file exists at ./dlc/output.bin)
                 std::string basic_string = "./dlc/" + gamecd + "/" + contents;
