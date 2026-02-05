@@ -40,6 +40,23 @@ jobs:
           tar -xzf openssl.tar.gz
           Rename-Item $dir openssl
 
+      - name: Dump openssl\\openssl directory tree
+        run: |
+          $target = "${{ github.workspace }}\openssl\openssl"
+
+          if (!(Test-Path $target)) {
+            Write-Host "Directory not found: $target"
+            exit 0
+          }
+
+          Write-Host "=== TREE: $target ==="
+          Get-ChildItem -Path $target -Recurse -Force |
+            Select-Object FullName |
+            ForEach-Object {
+              $_.FullName.Substring($target.Length)
+            }
+
+
 
       - name: Build OpenSSL (MSVC)
         working-directory: ${{ env.OPENSSL_SRC }}
