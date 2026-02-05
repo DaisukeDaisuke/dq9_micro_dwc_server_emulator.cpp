@@ -19,16 +19,16 @@ add_executable(dq9-server src/main.cpp
         src/RequestHandler.h
         src/terminal.h)
 
-# GCC系（Linux gcc / MinGW gcc）向け
-target_compile_options(dq9-server PRIVATE -O0 -Wall -Wextra -Wpedantic)
+
 
 # MinGWビルドかMSVCビルドかを判別するフラグを定義
 if(MINGW)
     add_definitions(-DMINGW_BUILD)
+    # GCC系（Linux gcc / MinGW gcc）向け
+    target_compile_options(dq9-server PRIVATE -O0 -Wall -Wextra -Wpedantic)
 elseif(MSVC)
     add_definitions(-DMSVC_BUILD)
 endif()
-
 
 if(MSVC)
     target_compile_options(dq9-server PRIVATE /W4 /MP)  # `/MP` で並列コンパイル
