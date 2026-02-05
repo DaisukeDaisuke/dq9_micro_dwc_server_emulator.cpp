@@ -31,6 +31,7 @@ jobs:
           cd openssl-OpenSSL_1_1_1w
           ./config --prefix=${OPENSSL_PREFIX} no-shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers
           make -j$(nproc)
+          make install
           make install_sw
 
       - name: Generate dummy-certs
@@ -117,13 +118,6 @@ jobs:
       - name: Ensure dlc directory
         run: |
           New-Item -ItemType Directory -Force "${{ env.BUILD_DIR }}\\Debug\\dlc" | Out-Null
-
-      - name: Collect runtime files next to exe
-        run: |
-          Copy-Item "${{ env.BUILD_DIR }}\libcrypto-1_1-x64.dll" "${{ env.BUILD_DIR }}\Debug\" -Force
-          Copy-Item "${{ env.BUILD_DIR }}\libssl-1_1-x64.dll"   "${{ env.BUILD_DIR }}\Debug\" -Force
-          
-          Copy-Item "${{ env.BUILD_DIR }}\dummy-certs" "${{ env.BUILD_DIR }}\Debug\dummy-certs" -Recurse -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
