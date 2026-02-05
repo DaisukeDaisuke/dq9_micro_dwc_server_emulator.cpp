@@ -15,7 +15,7 @@ jobs:
         shell: powershell
     env:
       BUILD_DIR: cmake-build-debug
-      OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl\openssl
+      OPENSSL_SRC: ${{ github.workspace }}\openssl\
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,23 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+
+      - name: Download OpenSSL source
+        run: |
+          $tag = "OpenSSL_1_1_1w"
+          $dir = "openssl-1.1.1w"
+          $base = "${{ github.workspace }}\openssl"
+
+          New-Item -ItemType Directory -Force $base | Out-Null
+          Set-Location $base
+
+          Invoke-WebRequest `
+            -Uri "https://github.com/openssl/openssl/releases/download/$tag/$dir.tar.gz" `
+            -OutFile "openssl.tar.gz"
+
+          tar -xzf openssl.tar.gz
+          Rename-Item $dir openssl
+
 
       - name: Build OpenSSL (MSVC)
         working-directory: ${{ env.OPENSSL_SRC }}
