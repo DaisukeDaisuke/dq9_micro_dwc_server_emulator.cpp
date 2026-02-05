@@ -6,9 +6,16 @@
 #define DQ9_SERVER_SOCKETS_H
 
 #ifdef _WIN32
-  #include <winsock2.h>
-  #include <ws2tcpip.h>
-    #include <iostream>
+#define NOMINMAX
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iostream>
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
   using socket_t = SOCKET;
 static constexpr socket_t kInvalidSocket = INVALID_SOCKET;
 static int socket_close(socket_t s) { return ::closesocket(s); }

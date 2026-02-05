@@ -43,7 +43,7 @@ jobs:
       - name: Build OpenSSL (MSVC)
         working-directory: ${{ env.OPENSSL_SRC }}
         run: |
-          perl Configure VC-WIN64A enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers --prefix="${{ env.OPENSSL_INSTALL }}" --openssldir="${{ env.OPENSSL_INSTALL }}" no-makedepend
+          perl Configure VC-WIN64A shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers no-tests no-module --prefix="${{ env.OPENSSL_INSTALL }}" --openssldir="${{ env.OPENSSL_INSTALL }}" no-makedepend
           nmake
           nmake install_sw
 
@@ -57,8 +57,8 @@ jobs:
 
       - name: Copy OpenSSL DLLs
         run: |
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-1_1-x64.dll" "${{ env.BUILD_DIR }}" -Force
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-1_1-x64.dll" "${{ env.BUILD_DIR }}" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
 
       - name: Create dummy-certs
         run:
