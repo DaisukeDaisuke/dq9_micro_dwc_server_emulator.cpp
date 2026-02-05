@@ -2,12 +2,36 @@ cmake_minimum_required(VERSION 3.18)
 project(dq9-server CXX)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os -Wall -Wextra")
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(OpenSSL REQUIRED)
-include_directories(${OPENSSL_INCLUDE_DIR})
+add_executable(dq9-server src/main.cpp
+        src/dns.cpp
+        src/dns.h
+        src/sockets.h)
 
-add_executable(dq9-server src/main.cpp)
-target_link_libraries(dq9-server ${OPENSSL_LIBRARIES} Threads::Threads)
+# GCC系（Linux gcc / MinGW gcc）向け
+target_compile_options(dq9-server PRIVATE -O0 -Wall -Wextra -Wpedantic)
+
+# --- MinGW (Windows GCC) 分岐 ---
+if (MINGW)
+    target_compile_definitions(dq9-server PRIVATE MINGW_BUILD)
+
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=x86-64 -mtune=generic -ffunction-sections -fdata-sections")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -mtune=generic -ffunction-sections -fdata-sections") #  -fno-inline-small-functions
+    set(CMAKE_EXE_LINKER_FLAGS "-Wl,--gc-sections")
+
+    # 「どこいったん？」→ここです：MinGW時の既定値として残す
+    # ただし上書き可能にする（cmake -DOPENSSL_ROOT_DIR=... で変更できる）
+    set(OPENSSL_ROOT_DIR "D:/software/ssl3_server/openssl/openssl/openssl")
+endif()
+
+# Windows (MinGW) は Winsock 必須
+if (WIN32)
+    target_link_libraries(dq9-server PRIVATE ws2_32)
+endif()
 
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+target_include_directories(dq9-server PRIVATE ${OPENSSL_INCLUDE_DIR})
+target_link_libraries(dq9-server PRIVATE ${OPENSSL_LIBRARIES} Threads::Threads)

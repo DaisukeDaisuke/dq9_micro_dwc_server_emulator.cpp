@@ -1,6 +1,3 @@
-// main.cpp — minimal DQ9-compatible TLS+HTTP server (single file)
-// build with: cmake, ensure OpenSSL points to your 0.9.8 install at build time
-
 #include <iostream>
 #include <vector>
 #include <string>
@@ -12,37 +9,39 @@
 #include <map>
 #include <chrono>
 #include <thread>
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <arpa/inet.h>
+#include <limits>
+#include "sockets.h"
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <cctype>
 
+#include "dns.h"
+
+// ... existing code ...
 
 static void run_http_server(int port) {
-    int sock = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) { perror("http socket"); return; }
+    sockets_init_once();
+
+    socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == kInvalidSocket) { perror("http socket"); return; }
 
     int opt = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(port);
+    addr.sin_port = htons((uint16_t)port);
 
     if (bind(sock, (sockaddr*)&addr, sizeof(addr)) != 0) {
         perror("http bind");
-        close(sock);
+        socket_close(sock);
         return;
     }
     if (listen(sock, 8) != 0) {
         perror("http listen");
-        close(sock);
+        socket_close(sock);
         return;
     }
 
@@ -60,22 +59,16 @@ static void run_http_server(int port) {
         "ok";
 
     while (true) {
-        int client = accept(sock, nullptr, nullptr);
-        if (client < 0) continue;
+        socket_t client = accept(sock, nullptr, nullptr);
+        if (client == kInvalidSocket) continue;
 
         char buf[1024];
-        recv(client, buf, sizeof(buf), 0); // 読み捨て
+        recv(client, buf, (int)sizeof(buf), 0); // 読み捨て
 
-        send(client, resp, sizeof(resp) - 1, 0);
-        close(client);
+        send(client, resp, (int)(sizeof(resp) - 1), 0);
+        socket_close(client);
     }
 }
-
-
-static const int DEFAULT_PORT = 443;
-static const size_t RECV_BUF = 8192;
-static const size_t SEND_CHUNK = 768; // tuneable: 512..1024 通らないなら1024にする
-
 struct SSL_CTX_RAII {
     SSL_CTX* ctx;
     SSL_CTX_RAII(SSL_CTX* p): ctx(p) {}
@@ -87,6 +80,13 @@ struct SSL_RAII {
     SSL_RAII(SSL* s): ssl(s) {}
     ~SSL_RAII(){ if(ssl) SSL_free(ssl); }
 };
+
+
+static const int DEFAULT_PORT = 443;
+static const size_t RECV_BUF = 8192;
+static const size_t SEND_CHUNK = 768; // tuneable: 512..1024 通らないなら1024にする
+static const size_t MAX_BODY_BYTES = 5u * 1024u * 1024u; // 100MB上限
+
 
 static void init_openssl() {
     SSL_library_init();
@@ -150,6 +150,110 @@ static std::map<std::string,std::string> parse_headers(const std::string& header
     return headers;
 }
 
+std::string readAll(const std::string& path) {
+    std::ifstream ifs(path, std::ios::in);
+    if (!ifs) {
+        return {};
+    }
+
+    std::ostringstream oss;
+    oss << ifs.rdbuf();
+    return oss.str();
+}
+
+bool base64_decode_star_as_pad(const std::string& input, std::string& output) {
+    static const int8_t table[256] = {
+        -1
+    };
+
+    static bool table_initialized = false;
+    static int8_t decode_table[256];
+
+    if (!table_initialized) {
+        for (int i = 0; i < 256; ++i) decode_table[i] = -1;
+        for (char c = 'A'; c <= 'Z'; ++c) decode_table[static_cast<uint8_t>(c)] = c - 'A';
+        for (char c = 'a'; c <= 'z'; ++c) decode_table[static_cast<uint8_t>(c)] = c - 'a' + 26;
+        for (char c = '0'; c <= '9'; ++c) decode_table[static_cast<uint8_t>(c)] = c - '0' + 52;
+        decode_table[static_cast<uint8_t>('+')] = 62;
+        decode_table[static_cast<uint8_t>('/')] = 63;
+        table_initialized = true;
+    }
+
+    std::vector<uint8_t> buf;
+    buf.reserve(input.size() * 3 / 4);
+
+    int val = 0;
+    int valb = -8;
+
+    for (unsigned char c : input) {
+        if (c == '*') {
+            c = '='; // '*' を '=' として扱う
+        }
+
+        if (c == '=') {
+            break;
+        }
+
+        int8_t d = decode_table[c];
+        if (d == -1) {
+            return false; // 不正な文字
+        }
+
+        val = (val << 6) + d;
+        valb += 6;
+        if (valb >= 0) {
+            buf.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+
+    output.assign(buf.begin(), buf.end());
+    return true;
+}
+
+#include <string>
+#include <vector>
+
+std::string base64_encode_replace(const std::string& input) {
+    static const char table[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789+/";
+
+    std::string output;
+    output.reserve(((input.size() + 2) / 3) * 4);
+
+    size_t i = 0;
+    const size_t len = input.size();
+
+    while (i < len) {
+        size_t remain = len - i;
+
+        uint32_t octet_a = static_cast<unsigned char>(input[i++]);
+        uint32_t octet_b = remain > 1 ? static_cast<unsigned char>(input[i++]) : 0;
+        uint32_t octet_c = remain > 2 ? static_cast<unsigned char>(input[i++]) : 0;
+
+        uint32_t triple = (octet_a << 16) | (octet_b << 8) | octet_c;
+
+        output.push_back(table[(triple >> 18) & 0x3F]);
+        output.push_back(table[(triple >> 12) & 0x3F]);
+
+        if (remain > 1)
+            output.push_back(table[(triple >> 6) & 0x3F]);
+        else
+            output.push_back('*');
+
+        if (remain > 2)
+            output.push_back(table[triple & 0x3F]);
+        else
+            output.push_back('*');
+    }
+
+    return output;
+}
+
+
+
 static std::vector<uint8_t> make_response_bytes(int status, const std::string& reason,
     const std::map<std::string,std::string>& headers, const std::vector<uint8_t>& body) {
 
@@ -165,6 +269,82 @@ static std::vector<uint8_t> make_response_bytes(int status, const std::string& r
     out.insert(out.end(), body.begin(), body.end());
     return out;
 }
+
+bool isValidGameCd(const std::string& gamecd) {
+    if (gamecd.empty()) {
+        return false;
+    }
+
+    for (unsigned char c : gamecd) {
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::string extract_and_decode_param(
+    const std::string& sbody,
+    const std::string& key_name
+) {
+    const std::string key = key_name + "=";
+
+    auto pos = sbody.find(key);
+    if (pos == std::string::npos) {
+        return {};
+    }
+
+    auto start = pos + key.size();
+    auto end = sbody.find('&', start);
+
+    std::string encoded = sbody.substr(
+        start,
+        end == std::string::npos ? std::string::npos : end - start
+    );
+
+    if (encoded.empty()) {
+        return {};
+    }
+
+    // %2a / %2A を * に置換（Base64デコード前処理）
+    {
+        std::string::size_type p = 0;
+        while ((p = encoded.find("%2a", p)) != std::string::npos) {
+            encoded.replace(p, 3, "*");
+            p += 1;
+        }
+        p = 0;
+        while ((p = encoded.find("%2A", p)) != std::string::npos) {
+            encoded.replace(p, 3, "*");
+            p += 1;
+        }
+    }
+
+    std::string decoded;
+    if (!base64_decode_star_as_pad(encoded, decoded)) {
+        return {};
+    }
+
+    return decoded;
+}
+
+std::size_t countCRLF(const std::string& data) {
+    std::size_t count = 0;
+    std::size_t pos = 0;
+
+    while (true) {
+        pos = data.find("\r\r", pos);
+        if (pos == std::string::npos) {
+            break;
+        }
+        ++count;
+        pos += 2; // 重複カウント防止
+    }
+
+    return count;
+}
+
 
 // Minimal handler: mimic server_v3.py behaviour for /download endpoints and login
 static void handle_request(const std::string& request_line,
@@ -183,13 +363,54 @@ static void handle_request(const std::string& request_line,
         ss >> method >> path >> httpv;
     }
 
+
+
     // Very simplified: if Host==nas.nintendowifi.net => return LOGIN like python
     if (host_only == "nas.nintendowifi.net") {
-        // parse body (very naive)
         std::string sbody(body.begin(), body.end());
-        if (sbody.find("action=login") != std::string::npos || sbody.find("action=LOGIN") != std::string::npos) {
-            std::string b = "returncd=...&date=20100101000000&retry=0";
-            std::map<std::string,std::string> h;
+
+        std::cerr << "sbody: " << sbody << "\n";
+
+        std::string action = extract_and_decode_param(sbody, "action");
+        std::string gamecd = extract_and_decode_param(sbody, "gamecd");
+        std::cerr << action;
+        if (action == "login" || action == "LOGIN") {
+            std::string b =
+                    "returncd=" + base64_encode_replace("001") +
+                    "&date=" + base64_encode_replace("Fri, 01 Jan 2010 00:00:00 GMT") +
+                    "&retry=" + base64_encode_replace("0") +
+                    "&locator=" + base64_encode_replace("gamespy.com") +
+                    "&challenge=" + base64_encode_replace("RNR1HLAS") +
+                    "&token=" + base64_encode_replace(
+                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89"
+                    );
+            std::cerr << "login: " << b << "\n";
+
+            std::map<std::string, std::string> h;
+            h["Content-Length"] = std::to_string(b.size());
+            h["Date"] = "Fri, 01 Jan 2010 00:00:00 GMT";
+            std::vector<uint8_t> bodyv(b.begin(), b.end());
+            out_resp = make_response_bytes(200, "OK", h, bodyv);
+            return;
+        }
+        if (action == "svcloc" || action == "SVCLOC") {
+            std::string svc = extract_and_decode_param(sbody, "svc");
+            std::string b = "returncd=" + base64_encode_replace("007") +
+                            "&statusdata=" + base64_encode_replace("Y") +
+                            "&retry=" + base64_encode_replace("0") +
+                            "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
+
+            if (svc == "9000") {
+                b = b + "&svchost=" + base64_encode_replace(
+                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
+            } else {
+                b = b + "&servicetoken=" + base64_encode_replace(
+                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
+            }
+
+            std::cerr << "svc: " << b << "\n";
+
+            std::map<std::string, std::string> h;
             h["Content-Length"] = std::to_string(b.size());
             h["Date"] = "Fri, 01 Jan 2010 00:00:00 GMT";
             std::vector<uint8_t> bodyv(b.begin(), b.end());
@@ -200,7 +421,39 @@ static void handle_request(const std::string& request_line,
         // if path starts with /download and action=list -> return small listing
         if (path.rfind("/download",0) == 0) {
             std::string sbody(body.begin(), body.end());
-            if (sbody.find("action=list")!=std::string::npos || sbody.find("action=LIST")!=std::string::npos) {
+            std::string action = extract_and_decode_param(sbody, "action");
+            std::string gamecd = extract_and_decode_param(sbody, "gamecd");
+
+            if (!isValidGameCd(gamecd) || gamecd.empty()) {
+                std::string b = "err";
+                std::vector<uint8_t> bodyv(b.begin(), b.end());
+                std::map<std::string,std::string> h;
+                out_resp = make_response_bytes(401, "err", h, bodyv);
+                return;
+            }
+
+            if (action == "count" || action == "COUNT") {
+                std::string path = "./dlc/" + gamecd + "/_list.txt";
+                std::string data = readAll(path);
+                if (data.empty()) {
+                    std::string b = "err";
+                    std::vector<uint8_t> bodyv(b.begin(), b.end());
+                    std::map<std::string,std::string> h;
+                    out_resp = make_response_bytes(500, "err", h, bodyv);
+                    return;
+                }
+                std::size_t counts_size = countCRLF(data) + 1; // std::size_t を取得
+                std::string b = std::to_string(counts_size); // std::string に変換
+                std::map<std::string,std::string> h;
+                h["Content-type"] = "text/plain";
+                h["X-DLS-Host"] = "http://127.0.0.1/";
+                h["Content-Length"] = std::to_string(b.size());
+                std::vector<uint8_t> bodyv(b.begin(), b.end());
+                std::cerr << "counts: " << b << "\n";
+                out_resp = make_response_bytes(200, "OK", h, bodyv);
+                return;
+            }
+            if (action == "LIST" || action == "list") {
                 std::string lines = "output.bin\t\taction\t\t0\r\n";
                 std::map<std::string,std::string> h;
                 h["Content-type"] = "text/plain";
@@ -233,11 +486,27 @@ static void handle_request(const std::string& request_line,
     out_resp = make_response_bytes(404, "Not Found", h, bodyv);
 }
 
+
 int main(int argc, char** argv) {
+    sockets_init_once();
+
+#ifdef _WIN32
+    const char* cert_file = R"(.\dummy-certs\server.crt)";
+    const char* key_file = R"(.\dummy-certs\server.key)";
+    const char* cert_nwc_file = R"(.\dummy-certs\nwc.crt)";
+    const char* ipconfg = R"(.\ip.txt)";
+    int port = DEFAULT_PORT;
+
+#else
+
     const char* cert_file = "/etc/ssl/certs/server.crt";
     const char* key_file = "/etc/ssl/private/server.key";
     const char* cert_nwc_file = "/etc/ssl/certs/nwc.crt";
     int port = DEFAULT_PORT;
+#endif
+
+    std::thread dns_thread(dns::run_dns_server_udp_53, std::string(readAll(ipconfg)), std::string("nintendowifi.net"));
+    dns_thread.detach();
 
     std::thread http_thread(run_http_server, 80);
     http_thread.detach();
@@ -247,6 +516,8 @@ int main(int argc, char** argv) {
     std::cerr << "Starting server on port " << port << "\n";
 
     init_openssl();
+
+    // ★ここ：SSLv3ハンドシェイク処理は維持（消さない）
     SSL_CTX* ctx = SSL_CTX_new(SSLv3_server_method());
     if (!ctx) {
         std::cerr << "SSL_CTX_new failed\n";
@@ -267,14 +538,18 @@ int main(int argc, char** argv) {
 
     std::cerr << "init2\n";
 
+    auto handle = fopen(cert_nwc_file, "r");
+
     if (SSL_CTX_add_extra_chain_cert(
         ctx,
-        PEM_read_X509(fopen(cert_nwc_file, "r"), nullptr, nullptr, nullptr)
+        PEM_read_X509(handle, nullptr, nullptr, nullptr)
     ) != 1) {
         std::cerr << "Certificate/key load failed2\n";
         ERR_print_errors_fp(stderr);
         return 1;
     }
+
+    fclose(handle);
 
     std::cerr << "init3\n";
 
@@ -285,35 +560,39 @@ int main(int argc, char** argv) {
     }
 
     // socket setup
-    int sock = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) { perror("socket"); return 1; }
-    int opt = 1; setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == kInvalidSocket) { perror("socket"); return 1; }
+
+    int opt = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
 
     sockaddr_in addr {};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(port);
+    addr.sin_port = htons((uint16_t)port);
 
-    if (bind(sock, (sockaddr*)&addr, sizeof(addr)) != 0) { perror("bind"); close(sock); return 1; }
-    if (listen(sock, 8) != 0) { perror("listen"); close(sock); return 1; }
+    if (bind(sock, (sockaddr*)&addr, sizeof(addr)) != 0) { perror("bind"); socket_close(sock); return 1; }
+    if (listen(sock, 8) != 0) { perror("listen"); socket_close(sock); return 1; }
     std::cerr << "Listening on port " << port << " (SSLv3 + RC4)\n";
 
     while (true) {
         sockaddr_in peer{};
         socklen_t plen = sizeof(peer);
-        int client = accept(sock, (sockaddr*)&peer, &plen);
-        if (client < 0) { perror("accept"); continue; }
+        socket_t client = accept(sock, (sockaddr*)&peer, &plen);
+        if (client == kInvalidSocket) { perror("accept"); continue; }
         std::cerr << "Accepted connection\n";
 
         SSL* ssl = SSL_new(ctx);
-        if (!ssl) { close(client); continue; }
+        if (!ssl) { socket_close(client); continue; }
         SSL_RAII ssl_raii(ssl);
 
-        SSL_set_fd(ssl, client);
+        SSL_set_fd(ssl, (int)client);
+
+        // ★ここ：SSLv3ハンドシェイク（SSL_accept）も維持
         if (SSL_accept(ssl) <= 0) {
             std::cerr << "SSL_accept failed\n";
             ERR_print_errors_fp(stderr);
-            close(client);
+            socket_close(client);
             continue;
         }
         std::cerr << "SSL handshake ok\n";
@@ -325,19 +604,45 @@ int main(int argc, char** argv) {
 
         std::cerr << "Request: " << header_block << "\n";
 
-        // if Content-Length exists, read more
+        // if Content-Length exists, read more (100MB制限 + 例外対策)
         size_t content_len = 0;
         auto it = headers.find("content-length");
         std::vector<uint8_t> bodyv;
+
         if (it != headers.end()) {
-            content_len = std::stoul(it->second);
-            size_t have = leftover_body.size();
+            try {
+                unsigned long long v = std::stoull(it->second);
+                if (v > (unsigned long long)MAX_BODY_BYTES) {
+                    std::cerr << "Body too large: " << v << " bytes\n";
+                    SSL_shutdown(ssl);
+                    socket_close(client);
+                    continue;
+                }
+                if (v > std::numeric_limits<size_t>::max()) {
+                    std::cerr << "Content-Length out of range\n";
+                    SSL_shutdown(ssl);
+                    socket_close(client);
+                    continue;
+                }
+                content_len = (size_t)v;
+            } catch (...) {
+                std::cerr << "Invalid Content-Length\n";
+                content_len = 0;
+            }
+
             bodyv.assign(leftover_body.begin(), leftover_body.end());
+            if (bodyv.size() > content_len) bodyv.resize(content_len);
+
             while (bodyv.size() < content_len) {
-                std::vector<char> tmp(RECV_BUF);
+                size_t need = content_len - bodyv.size();
+                size_t chunk = std::min(need, RECV_BUF);
+
+                std::vector<char> tmp(chunk);
                 int r = SSL_read(ssl, tmp.data(), (int)tmp.size());
                 if (r <= 0) break;
-                bodyv.insert(bodyv.end(), tmp.data(), tmp.data()+r);
+
+                size_t can_take = std::min((size_t)r, content_len - bodyv.size());
+                bodyv.insert(bodyv.end(), tmp.data(), tmp.data() + can_take);
             }
         }
 
@@ -350,15 +655,13 @@ int main(int argc, char** argv) {
 
         // orderly shutdown: two-phase
         SSL_shutdown(ssl); // send close_notify
-        // shutdown write side of socket to provoke peer close_notify
-        shutdown(client, SHUT_WR);
-        // try second shutdown to receive peer's close_notify
+        socket_shutdown_wr(client);
         SSL_shutdown(ssl);
 
-        close(client);
+        socket_close(client);
     }
 
-    close(sock);
+    socket_close(sock);
     return 0;
 }
 
