@@ -60,7 +60,7 @@ jobs:
       run:
         shell: powershell
     env:
-      BUILD_DIR: cmake-build-debug
+      BUILD_DIR: cmake-build-Release
       OPENSSL_VERSION: 3.0.19
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
@@ -113,19 +113,15 @@ jobs:
 
       - name: Copy OpenSSL DLLs
         run: |
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}\Debug" -Force
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}\Debug" -Force
-
-      - name: Ensure dlc directory
-        run: |
-          New-Item -ItemType Directory -Force "${{ env.BUILD_DIR }}\\Debug\\dlc" | Out-Null
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}\Release" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}\Release" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-msbuild
           path: |
-            ${{ env.BUILD_DIR }}\Debug
+            ${{ env.BUILD_DIR }}\Release
 
   merge-artifacts-linux:
     runs-on: ubuntu-latest
