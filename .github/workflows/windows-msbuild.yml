@@ -15,7 +15,7 @@ jobs:
         shell: powershell
     env:
       BUILD_DIR: cmake-build-debug
-      OPENSSL_SRC: ${{ github.workspace }}\openssl\
+      OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
     steps:
       - uses: actions/checkout@v4
