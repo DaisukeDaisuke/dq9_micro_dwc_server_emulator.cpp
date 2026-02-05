@@ -75,7 +75,6 @@ jobs:
           key: openssl-${{ env.OPENSSL_VERSION }}-windows-msvc
 
       - uses: ilammy/msvc-dev-cmd@v1
-        if: steps.cache-openssl.outputs.cache-hit != 'true'
         with:
           arch: x64
 
