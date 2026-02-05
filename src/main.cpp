@@ -329,6 +329,66 @@ std::string extract_and_decode_param(
     return decoded;
 }
 
+// 追加：CR終端っぽいレコードを「split(\r) -> trim(\r,\n) -> join(\r\n)」で正規化
+static inline bool is_crlf_char(uint8_t c) {
+    return c == '\r' || c == '\n';
+}
+
+static std::vector<uint8_t> normalize_records_cr_terminated(
+    const std::vector<uint8_t>& in,
+    bool keep_empty_lines = false
+) {
+    std::vector<uint8_t> out;
+    out.reserve(in.size() + 2);
+
+    auto flush_record = [&](size_t b, size_t e) {
+        while (b < e && is_crlf_char(in[b])) ++b;
+        while (e > b && is_crlf_char(in[e - 1])) --e;
+
+        const bool empty = (b >= e);
+        if (empty && !keep_empty_lines) return;
+
+        out.insert(out.end(), in.begin() + (ptrdiff_t)b, in.begin() + (ptrdiff_t)e);
+        out.push_back('\r');
+        out.push_back('\n');
+    };
+
+    size_t start = 0;
+    for (size_t i = 0; i < in.size(); ++i) {
+        if (in[i] == '\r') {
+            flush_record(start, i);
+            start = i + 1;
+        }
+    }
+    // 最後が\rで終端していないケースも一応救う（必要なければ消してOK）
+    if (start < in.size()) {
+        flush_record(start, in.size());
+    }
+
+    return out;
+}
+
+static std::string normalize_records_cr_terminated(
+    const std::string& in,
+    bool keep_empty_lines = false
+) {
+    std::vector<uint8_t> v(in.begin(), in.end());
+    auto norm = normalize_records_cr_terminated(v, keep_empty_lines);
+    return std::string(norm.begin(), norm.end());
+}
+
+static std::size_t count_lines_after_normalize_cr_terminated(const std::string& in) {
+    // 正規化後は必ず「1行につき1個の \r\n」を付けるので、行数= "\r\n" の数
+    const std::string norm = normalize_records_cr_terminated(in, /*keep_empty_lines=*/false);
+
+    std::size_t count = 0;
+    for (size_t i = 0; i + 1 < norm.size(); ++i) {
+        if (norm[i] == '\r' && norm[i + 1] == '\n') ++count;
+    }
+    return count;
+}
+
+
 std::size_t countCRLF(const std::string& data) {
     std::size_t count = 0;
     std::size_t pos = 0;
@@ -343,6 +403,30 @@ std::size_t countCRLF(const std::string& data) {
     }
 
     return count;
+}
+
+bool is_valid_path(const std::string& path) {
+    // ".." が含まれていれば不正
+    if (path.find("..") != std::string::npos) {
+        return false;
+    }
+
+    // Windows の場合、バックスラッシュもチェック
+    if (path.find('\\') != std::string::npos) {
+        return false;
+    }
+
+    //「/」も不正
+    if (path.find('/') != std::string::npos) {
+        return false;
+    }
+
+    // 空文字列も無効扱い
+    if (path.empty()) {
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -369,12 +453,10 @@ static void handle_request(const std::string& request_line,
     if (host_only == "nas.nintendowifi.net") {
         std::string sbody(body.begin(), body.end());
 
-        std::cerr << "sbody: " << sbody << "\n";
-
         std::string action = extract_and_decode_param(sbody, "action");
         std::string gamecd = extract_and_decode_param(sbody, "gamecd");
-        std::cerr << action;
         if (action == "login" || action == "LOGIN") {
+            std::cerr << "["<< gamecd << "] Processing Login... " << std::endl;
             std::string b =
                     "returncd=" + base64_encode_replace("001") +
                     "&date=" + base64_encode_replace("Fri, 01 Jan 2010 00:00:00 GMT") +
@@ -384,7 +466,6 @@ static void handle_request(const std::string& request_line,
                     "&token=" + base64_encode_replace(
                         "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89"
                     );
-            std::cerr << "login: " << b << "\n";
 
             std::map<std::string, std::string> h;
             h["Content-Length"] = std::to_string(b.size());
@@ -394,6 +475,7 @@ static void handle_request(const std::string& request_line,
             return;
         }
         if (action == "svcloc" || action == "SVCLOC") {
+            std::cerr << "request cdn url, game: " << gamecd << std::endl;
             std::string svc = extract_and_decode_param(sbody, "svc");
             std::string b = "returncd=" + base64_encode_replace("007") +
                             "&statusdata=" + base64_encode_replace("Y") +
@@ -407,8 +489,6 @@ static void handle_request(const std::string& request_line,
                 b = b + "&servicetoken=" + base64_encode_replace(
                         "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
             }
-
-            std::cerr << "svc: " << b << "\n";
 
             std::map<std::string, std::string> h;
             h["Content-Length"] = std::to_string(b.size());
@@ -433,6 +513,8 @@ static void handle_request(const std::string& request_line,
             }
 
             if (action == "count" || action == "COUNT") {
+                std::cerr << "["<< gamecd <<"]sending count..."  << std::endl;
+
                 std::string path = "./dlc/" + gamecd + "/_list.txt";
                 std::string data = readAll(path);
                 if (data.empty()) {
@@ -442,38 +524,74 @@ static void handle_request(const std::string& request_line,
                     out_resp = make_response_bytes(500, "err", h, bodyv);
                     return;
                 }
-                std::size_t counts_size = countCRLF(data) + 1; // std::size_t を取得
-                std::string b = std::to_string(counts_size); // std::string に変換
+
+                std::size_t counts_size = count_lines_after_normalize_cr_terminated(data);
+                std::string b = std::to_string(counts_size);  // 件数を文字列化
                 std::map<std::string,std::string> h;
                 h["Content-type"] = "text/plain";
                 h["X-DLS-Host"] = "http://127.0.0.1/";
                 h["Content-Length"] = std::to_string(b.size());
                 std::vector<uint8_t> bodyv(b.begin(), b.end());
-                std::cerr << "counts: " << b << "\n";
                 out_resp = make_response_bytes(200, "OK", h, bodyv);
                 return;
             }
             if (action == "LIST" || action == "list") {
-                std::string lines = "output.bin\t\taction\t\t0\r\n";
+                std::string num = extract_and_decode_param(sbody, "num");
+                std::string offset = extract_and_decode_param(sbody, "offset");
+
+                std::cerr << "["<< gamecd <<"]sending list... " << std::endl;
+
+                std::string path = "./dlc/" + gamecd + "/_list.txt";
+                std::string data = readAll(path);
+                if (data.empty()) {
+                    std::string b = "err";
+                    std::vector<uint8_t> bodyv(b.begin(), b.end());
+                    std::map<std::string,std::string> h;
+                    out_resp = make_response_bytes(500, "err", h, bodyv);
+                    return;
+                }
+
+                data = normalize_records_cr_terminated(data, /*keep_empty_lines=*/false);
+
+
                 std::map<std::string,std::string> h;
                 h["Content-type"] = "text/plain";
-                h["Content-Length"] = std::to_string(lines.size());
-                std::vector<uint8_t> bodyv(lines.begin(), lines.end());
+                h["X-DLS-Host"] = "http://127.0.0.1/";
+                h["Content-Length"] = std::to_string(data.size());
+                std::vector<uint8_t> bodyv(data.begin(), data.end());
                 out_resp = make_response_bytes(200, "OK", h, bodyv);
                 return;
             }
-            if (sbody.find("action=contents")!=std::string::npos) {
+            if (action == "CONTENTS" || action == "contents") {
+                const std::string contents = extract_and_decode_param(sbody, "contents");
+                if (!is_valid_path(contents)) {
+                    std::string b = "err";
+                    std::vector<uint8_t> bodyv(b.begin(), b.end());
+                    std::map<std::string,std::string> h;
+                    out_resp = make_response_bytes(400, "err", h, bodyv);
+                    return;
+                }
+
+                std::cerr << "["<< gamecd <<"]sending " << contents << "..." << std::endl;
+
                 // return file (ensure file exists at ./dlc/output.bin)
-                std::ifstream ifs("dlc/output.bin", std::ios::binary);
+                std::string basic_string = "./dlc/" + gamecd + "/" + contents;
+                std::ifstream ifs(basic_string, std::ios::binary);
                 std::vector<uint8_t> filev;
                 if (ifs) {
                     filev.assign( (std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>() );
                     std::map<std::string,std::string> h;
                     h["Content-type"] = "application/x-dsdl";
                     h["Content-Length"] = std::to_string(filev.size());
+                    h["X-DLS-Host"] = "http://127.0.0.1/";
+                    h["Content-Disposition"] = "attachment; filename=\"" + contents + "\"";
                     out_resp = make_response_bytes(200, "OK", h, filev);
                     return;
                 }
+                std::string b = "err";
+                std::vector<uint8_t> bodyv(b.begin(), b.end());
+                std::map<std::string,std::string> h;
+                out_resp = make_response_bytes(404, "Not Found", h, bodyv);
             }
         }
     }
@@ -535,6 +653,8 @@ int main(int argc, char** argv) {
         ERR_print_errors_fp(stderr);
         return 1;
     }
+
+    SSL_CTX_set_quiet_shutdown(ctx, 1);
 
     std::cerr << "init2\n";
 
@@ -602,8 +722,6 @@ int main(int argc, char** argv) {
         std::string req_line;
         auto headers = parse_headers(header_block, req_line);
 
-        std::cerr << "Request: " << header_block << "\n";
-
         // if Content-Length exists, read more (100MB制限 + 例外対策)
         size_t content_len = 0;
         auto it = headers.find("content-length");
@@ -653,9 +771,6 @@ int main(int argc, char** argv) {
         // send in controlled chunks
         ssl_write_split(ssl, resp);
 
-        // orderly shutdown: two-phase
-        SSL_shutdown(ssl); // send close_notify
-        socket_shutdown_wr(client);
         SSL_shutdown(ssl);
 
         socket_close(client);
