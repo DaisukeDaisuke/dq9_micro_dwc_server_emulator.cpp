@@ -17,9 +17,8 @@ add_executable(dq9-server src/main.cpp
         src/FileHelper.h
         src/RequestHandler.cpp
         src/RequestHandler.h
-        src/terminal.h)
-
-
+        src/terminal.h
+)
 
 # MinGWビルドかMSVCビルドかを判別するフラグを定義
 if(MINGW)
@@ -28,6 +27,7 @@ if(MINGW)
     target_compile_options(dq9-server PRIVATE -O0 -Wall -Wextra -Wpedantic)
 elseif(MSVC)
     add_definitions(-DMSVC_BUILD)
+    add_executable(dq9-server src/applink.c)
 endif()
 
 if(MSVC)
