@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-ARG OPENSSL_TAG="OpenSSL_1_1_1w"
-ARG OPENSSL_DIR="openssl-1.1.1w"
+ARG OPENSSL_TAG="openssl-3.0.19"
+ARG OPENSSL_DIR="openssl-3.0.19"
 
 # ===== build stage =====
 FROM ubuntu:24.04 AS build
@@ -37,6 +37,8 @@ WORKDIR /build
 
 # Fetch OpenSSL source tarball (as requested)
 RUN curl -L "https://github.com/openssl/openssl/releases/download/${OPENSSL_TAG}/${OPENSSL_DIR}.tar.gz" -o /build/openssl.tar.gz
+
+RUN ls -al /build/
 
 RUN tar -xzf /build/openssl.tar.gz -C /build \
  && test -d "/build/${OPENSSL_DIR}"

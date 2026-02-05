@@ -26,8 +26,8 @@ jobs:
 
       - name: Download OpenSSL source
         run: |
-          $tag = "OpenSSL_1_1_1w"
-          $dir = "openssl-1.1.1w"
+          $tag = "openssl-3.0.19"
+          $dir = "openssl-3.0.19"
           $base = "${{ github.workspace }}\openssl"
 
           New-Item -ItemType Directory -Force $base | Out-Null
