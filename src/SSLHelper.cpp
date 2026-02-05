@@ -24,6 +24,8 @@
 #include <openssl/provider.h>
 #include <cctype>
 
+#include "applink.c"
+
 #include "dns.h"
 #include "ServerContext.h"
 #include "terminal.h"

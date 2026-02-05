@@ -110,7 +110,7 @@ jobs:
 
       - name: Build (MSBuild with PDB)
         run: |
-          msbuild "${{ env.BUILD_DIR }}\\dq9-server.sln" /p:Configuration=Debug /p:Platform=x64 /p:DebugSymbols=true /p:DebugType=full
+          msbuild "${{ env.BUILD_DIR }}\\dq9-server.sln" /p:Configuration=Release /p:Platform=x64 /p:DebugSymbols=true /p:DebugType=full
 
       - name: Copy OpenSSL DLLs
         run: |
