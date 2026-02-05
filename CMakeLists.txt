@@ -22,6 +22,22 @@ add_executable(dq9-server src/main.cpp
 # GCC系（Linux gcc / MinGW gcc）向け
 target_compile_options(dq9-server PRIVATE -O0 -Wall -Wextra -Wpedantic)
 
+# MinGWビルドかMSVCビルドかを判別するフラグを定義
+if(MINGW)
+    add_definitions(-DMINGW_BUILD)
+elseif(MSVC)
+    add_definitions(-DMSVC_BUILD)
+endif()
+
+
+if(MSVC)
+    target_compile_options(dq9-server PRIVATE /W4 /MP)  # `/MP` で並列コンパイル
+    target_link_options(dq9-server PRIVATE /INCREMENTAL:NO /DEBUG)
+
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi /O2")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+endif()
+
 # --- MinGW (Windows GCC) 分岐 ---
 if (MINGW)
     target_compile_definitions(dq9-server PRIVATE MINGW_BUILD)

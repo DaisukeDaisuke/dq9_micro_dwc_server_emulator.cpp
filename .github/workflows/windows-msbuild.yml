@@ -1,0 +1,87 @@
+name: windows-msbuild
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request: {}
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    env:
+      BUILD_DIR: cmake-build-debug
+      OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl\openssl
+      OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build OpenSSL (MSVC)
+        working-directory: ${{ env.OPENSSL_SRC }}
+        run: |
+          perl Configure VC-WIN64A --prefix="${{ env.OPENSSL_INSTALL }}" --openssldir="${{ env.OPENSSL_INSTALL }}" no-makedepend
+          nmake
+          nmake install_sw
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B "${{ env.BUILD_DIR }}" -G "Visual Studio 17 2022" -A x64 -DOPENSSL_ROOT_DIR="${{ env.OPENSSL_INSTALL }}"
+
+      - name: Build (MSBuild with PDB)
+        run: |
+          msbuild "${{ env.BUILD_DIR }}\\dq9-server.sln" /p:Configuration=Debug /p:Platform=x64 /p:DebugSymbols=true /p:DebugType=full
+
+      - name: Copy OpenSSL DLLs
+        run: |
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-1_1-x64.dll" "${{ env.BUILD_DIR }}" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-1_1-x64.dll" "${{ env.BUILD_DIR }}" -Force
+
+      - name: Create dummy-certs
+        run:
+          $dummy = Join-Path "${{ env.BUILD_DIR }}" "dummy-certs"
+          New-Item -ItemType Directory -Force $dummy | Out-Null
+          $p12 = Join-Path $dummy "WII_NWC_1_CERT.p12"
+          Invoke-WebRequest -Uri "https://larsenv.github.io/NintendoCerts/WII_NWC_1_CERT.p12" -OutFile $p12
+          $openssl = Join-Path "${{ env.OPENSSL_INSTALL }}" "bin\openssl.exe"
+          & $openssl pkcs12 -in $p12 -passin pass:alpine -passout pass:alpine -out (Join-Path $dummy "keys.txt")
+          $keys = Get-Content (Join-Path $dummy "keys.txt")
+          $nwcCrt = $keys | Select-Object -Skip 6 -First 23
+          $nwcKey = $keys | Select-Object -Skip 32 -First 18
+          ($nwcCrt -join "`n") | Set-Content -Encoding ascii -NoNewline (Join-Path $dummy "nwc.crt")
+          "`n" | Add-Content -Encoding ascii (Join-Path $dummy "nwc.crt")
+          ($nwcKey -join "`n") | Set-Content -Encoding ascii -NoNewline (Join-Path $dummy "nwc.key")
+          "`n" | Add-Content -Encoding ascii (Join-Path $dummy "nwc.key")
+          & $openssl genrsa -out (Join-Path $dummy "server.key") 1024
+          $dn = "US`nWashington`nRedmond`nNintendo of America Inc.`nNintendo Wifi Network`n*.*.*`nca@noa.nintendo.com`n`n`n"
+          $dn | & $openssl req -new -key (Join-Path $dummy "server.key") -out (Join-Path $dummy "server.csr")
+          & $openssl x509 -req -in (Join-Path $dummy "server.csr") -CA (Join-Path $dummy "nwc.crt") -CAkey (Join-Path $dummy "nwc.key") -CAcreateserial -out (Join-Path $dummy "server.crt") -days 3650 -sha1 -passin pass:alpine
+          Remove-Item (Join-Path $dummy "WII_NWC_1_CERT.p12"), (Join-Path $dummy "keys.txt"), (Join-Path $dummy "nwc.key"), (Join-Path $dummy "nwc.srl"), (Join-Path $dummy "server.csr") -Force
+          ((Get-Content (Join-Path $dummy "server.crt")) + (Get-Content (Join-Path $dummy "nwc.crt"))) -join "`n" | Set-Content -Encoding ascii -NoNewline (Join-Path $dummy "server_with_chain.crt")
+          "`n" | Add-Content -Encoding ascii (Join-Path $dummy "server_with_chain.crt")
+
+      - name: Ensure dlc directory
+        run: |
+          New-Item -ItemType Directory -Force "${{ env.BUILD_DIR }}\\Debug\\dlc" | Out-Null
+
+      - name: Collect runtime files next to exe
+        run: |
+          Copy-Item "${{ env.BUILD_DIR }}\libcrypto-1_1-x64.dll" "${{ env.BUILD_DIR }}\Debug\" -Force
+          Copy-Item "${{ env.BUILD_DIR }}\libssl-1_1-x64.dll"   "${{ env.BUILD_DIR }}\Debug\" -Force
+          
+          Copy-Item "${{ env.BUILD_DIR }}\dummy-certs" "${{ env.BUILD_DIR }}\Debug\dummy-certs" -Recurse -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msbuild
+          path: |
+            ${{ env.BUILD_DIR }}\Debug
+
