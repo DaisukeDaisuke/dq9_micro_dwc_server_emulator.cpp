@@ -96,6 +96,7 @@ jobs:
           Rename-Item $dir openssl
 
       - name: Build OpenSSL (MSVC)
+        if: steps.cache-openssl.outputs.cache-hit != 'true'
         working-directory: ${{ env.OPENSSL_SRC }}
         run: |
           perl Configure VC-WIN64A shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers no-tests no-module --prefix="${{ env.OPENSSL_INSTALL }}" --openssldir="${{ env.OPENSSL_INSTALL }}" no-makedepend
@@ -112,8 +113,8 @@ jobs:
 
       - name: Copy OpenSSL DLLs
         run: |
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}\Debug" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}\Debug" -Force
 
       - name: Ensure dlc directory
         run: |
