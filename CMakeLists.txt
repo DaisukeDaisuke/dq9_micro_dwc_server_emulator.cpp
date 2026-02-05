@@ -48,7 +48,7 @@ if (MINGW)
 
     # 「どこいったん？」→ここです：MinGW時の既定値として残す
     # ただし上書き可能にする（cmake -DOPENSSL_ROOT_DIR=... で変更できる）
-    set(OPENSSL_ROOT_DIR "D:/software/ssl3_server/openssl/openssl")
+    set(OPENSSL_ROOT_DIR "./openssl/openssl")
 endif()
 
 # Windows (MinGW) は Winsock 必須

@@ -61,7 +61,7 @@ RUN perl Configure mingw64 \
     --prefix="${PREFIX}" \
     --openssldir="${OPENSSLDIR}" \
     shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers \
-    no-tests
+    no-tests no-module
 
 RUN make -j"$(nproc)"
 RUN make install_sw

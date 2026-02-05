@@ -110,6 +110,7 @@ struct SSL_RAII {
 
 void init_openssl() {
     OPENSSL_init_ssl(OPENSSL_INIT_SSL_DEFAULT, nullptr);
+    OSSL_PROVIDER_load(nullptr,"base");
     OSSL_PROVIDER_load(nullptr, "default");
     OSSL_PROVIDER_load(nullptr, "legacy");
 }
@@ -142,19 +143,28 @@ int SSLHelper::Main(ServerContext& ctx2) {
     if (!ctx) {
         std::cerr << "SSL_CTX_new failed" << std::endl;
         ERR_print_errors_fp(stderr);
+        std::cerr << std::flush;
         return 1;
     }
     SSL_CTX_RAII ctx_raii(ctx);
     SSL_CTX_set_quiet_shutdown(ctx, 1);
+    SSL_CTX_set_security_level(ctx, 0);
     SSL_CTX_set_min_proto_version(ctx, SSL3_VERSION);
     SSL_CTX_set_max_proto_version(ctx, SSL3_VERSION);
 
     term << "[https] Initializing OpenSSL: ok" << std::endl;
 
-    if (!SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) ||
-        !SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM)) {
+    if (!SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM)) {
         std::cerr << "Certificate/key load failed1" << std::endl;
         ERR_print_errors_fp(stderr);
+        std::cerr << std::flush;
+        return 1;
+    }
+
+    if (!SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM)) {
+        std::cerr << "Certificate/key load failed2" << std::endl;
+        ERR_print_errors_fp(stderr);
+        std::cerr << std::flush;
         return 1;
     }
 
@@ -173,6 +183,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
         }
         term << "Certificate/key load failed2" << std::endl;
         ERR_print_errors_fp(stderr);
+        std::cerr << std::flush;
         fclose(handle);
         return 1;
     }
@@ -186,6 +197,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
     if (!SSL_CTX_set_cipher_list(ctx, "RC4-SHA:RC4-MD5")) {
         term << "Failed to set cipher list" << std::endl;
         ERR_print_errors_fp(stderr);
+        std::cerr << std::flush;
         return 1;
     }
 
@@ -239,6 +251,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
         if (SSL_accept(ssl) <= 0) {
             term << "SSL_accept failed" << std::endl;
             ERR_print_errors_fp(stderr);
+            std::cerr << std::flush;
             socket_close(client);
             continue;
         }
