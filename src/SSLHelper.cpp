@@ -24,6 +24,7 @@
 
 #include "dns.h"
 #include "ServerContext.h"
+#include "terminal.h"
 
 static const int DEFAULT_PORT = 443;
 static const size_t RECV_BUF = 8192;
@@ -112,6 +113,8 @@ static void init_openssl() {
 }
 
 int SSLHelper::Main(ServerContext& ctx2) {
+    terminal term;
+    
     sockets_init_once();
 #ifdef _WIN32
     const char* cert_file = R"(.\dummy-certs\server.crt)";
@@ -126,32 +129,32 @@ int SSLHelper::Main(ServerContext& ctx2) {
     int port = DEFAULT_PORT;
 #endif
 
-     std::cerr << "Starting server on port " << port << "\n";
+     term << "[https] Starting server on port " << port << std::endl;
 
     init_openssl();
 
     // ★ここ：SSLv3ハンドシェイク処理は維持（消さない）
     SSL_CTX* ctx = SSL_CTX_new(SSLv3_server_method());
     if (!ctx) {
-        std::cerr << "SSL_CTX_new failed\n";
+        std::cerr << "SSL_CTX_new failed" << std::endl;
         ERR_print_errors_fp(stderr);
         return 1;
     }
     SSL_CTX_RAII ctx_raii(ctx);
 
-    std::cerr << "init\n";
+    term << "[https] init" << std::endl;
 
 
     if (!SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) ||
         !SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM)) {
-        std::cerr << "Certificate/key load failed1\n";
+        std::cerr << "Certificate/key load failed1" << std::endl;
         ERR_print_errors_fp(stderr);
         return 1;
     }
 
     SSL_CTX_set_quiet_shutdown(ctx, 1);
 
-    std::cerr << "init2\n";
+    term << "[https] init2" << std::endl;
 
     auto handle = fopen(cert_nwc_file, "r");
 
@@ -159,17 +162,17 @@ int SSLHelper::Main(ServerContext& ctx2) {
         ctx,
         PEM_read_X509(handle, nullptr, nullptr, nullptr)
     ) != 1) {
-        std::cerr << "Certificate/key load failed2\n";
+        term << "Certificate/key load failed2" << std::endl;
         ERR_print_errors_fp(stderr);
         return 1;
     }
 
     fclose(handle);
 
-    std::cerr << "init3\n";
+    term << "[https] init3" << std::endl;
 
     if (!SSL_CTX_set_cipher_list(ctx, "RC4-SHA:RC4-MD5")) {
-        std::cerr << "Failed to set cipher list\n";
+        term << "Failed to set cipher list" << std::endl;
         ERR_print_errors_fp(stderr);
         return 1;
     }
@@ -188,7 +191,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
     if (bind(sock, (sockaddr*)&addr, sizeof(addr)) != 0) { perror("bind"); socket_close(sock); return 1; }
     if (listen(sock, 8) != 0) { perror("listen"); socket_close(sock); return 1; }
-    std::cerr << "Listening on port " << port << " (SSLv3 + RC4)\n";
+    term << "[https] Listening on port " << port << " (SSLv3 + RC4)" << std::endl;
 
     ctx2.https_sock = sock;
 
@@ -204,7 +207,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
             socket_close(client);
             break;
         }
-        std::cerr << "Accepted connection\n";
+        term << "[https] Accepted connection... SSL handshake: " << std::flush;
 
         SSL* ssl = SSL_new(ctx);
         if (!ssl) { socket_close(client); continue; }
@@ -214,12 +217,12 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
         // ★ここ：SSLv3ハンドシェイク（SSL_accept）も維持
         if (SSL_accept(ssl) <= 0) {
-            std::cerr << "SSL_accept failed\n";
+            term << "SSL_accept failed" << std::endl;
             ERR_print_errors_fp(stderr);
             socket_close(client);
             continue;
         }
-        std::cerr << "SSL handshake ok\n";
+        term << "ok" << std::endl;
 
         std::string leftover_body;
         std::string header_block = read_until_double_crlf(ssl, leftover_body);
@@ -235,20 +238,20 @@ int SSLHelper::Main(ServerContext& ctx2) {
             try {
                 unsigned long long v = std::stoull(it->second);
                 if (v > (unsigned long long)MAX_BODY_BYTES) {
-                    std::cerr << "Body too large: " << v << " bytes\n";
+                    std::cerr << "[https] Body too large: " << v << " bytes" << std::endl;
                     SSL_shutdown(ssl);
                     socket_close(client);
                     continue;
                 }
                 if (v > std::numeric_limits<size_t>::max()) {
-                    std::cerr << "Content-Length out of range\n";
+                    std::cerr << "[https] Content-Length out of range\n";
                     SSL_shutdown(ssl);
                     socket_close(client);
                     continue;
                 }
                 content_len = (size_t)v;
             } catch (...) {
-                std::cerr << "Invalid Content-Length\n";
+                std::cerr << "[https] Invalid Content-Length" << std::endl;
                 content_len = 0;
             }
 

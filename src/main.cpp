@@ -9,12 +9,17 @@
 
 #include <csignal>
 
+#include "terminal.h"
+
 static ServerContext* g_ctx = nullptr;
 
 void on_sigint(int)
 {
     if (g_ctx) {
+        terminal term;
         g_ctx->stop = true;
+
+        term << "[watchdog] stopping...";
 
         if (g_ctx->dns_sock   != kInvalidSocket) socket_close(g_ctx->dns_sock);
         if (g_ctx->http_sock  != kInvalidSocket) socket_close(g_ctx->http_sock);
@@ -24,8 +29,11 @@ void on_sigint(int)
 
 void wait_for_input(ServerContext& ctx)
 {
+    terminal term;
     std::string line;
     std::getline(std::cin, line);
+
+    term << "[watchdog] stopping...";
 
     ctx.stop = true;
 

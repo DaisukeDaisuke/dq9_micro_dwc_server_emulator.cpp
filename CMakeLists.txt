@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 project(dq9-server CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(dq9-server src/main.cpp
@@ -16,7 +16,8 @@ add_executable(dq9-server src/main.cpp
         src/FileHelper.cpp
         src/FileHelper.h
         src/RequestHandler.cpp
-        src/RequestHandler.h)
+        src/RequestHandler.h
+        src/terminal.h)
 
 # GCC系（Linux gcc / MinGW gcc）向け
 target_compile_options(dq9-server PRIVATE -O0 -Wall -Wextra -Wpedantic)

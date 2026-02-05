@@ -16,9 +16,12 @@
 
 #include "dns.h"
 #include "ServerContext.h"
+#include "terminal.h"
 
 void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
     sockets_init_once();
+
+    terminal term;
 
     socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
     if (sock == kInvalidSocket) { perror("http socket"); return; }
@@ -44,7 +47,7 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
         return;
     }
 
-    std::cerr << "HTTP listening on port " << port << "\n";
+    term << "[http] HTTP listening on port " << port << std::endl;
 
     const char resp[] =
         "HTTP/1.1 200 OK\r\n"
@@ -71,6 +74,8 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
 
         char buf[1024];
         recv(client, buf, (int)sizeof(buf), 0); // 読み捨て
+
+        term << "[http] Received conntest request!" << std::endl;
 
         send(client, resp, (int)(sizeof(resp) - 1), 0);
         socket_close(client);

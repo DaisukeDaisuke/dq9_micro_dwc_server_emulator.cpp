@@ -6,6 +6,7 @@
 
 #include "ServerContext.h"
 #include "sockets.h"
+#include "terminal.h"
 
 struct ServerContext;
 
@@ -143,6 +144,8 @@ static std::vector<uint8_t> build_dns_response_a(
 void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v4, const std::string& suffix = "nintendowifi.net"){
     sockets_init_once();
 
+    terminal term;
+
     socket_t s = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (s == kInvalidSocket) { perror("dns socket"); return; }
 
@@ -174,7 +177,7 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
         return;
     }
 
-    std::cerr << "DNS (UDP) listening on :53, spoof *." << suffix << " -> " << spoof_ip_v4 << "\n";
+    term << "[dns] DNS (UDP) listening on :53, spoof *." << suffix << " -> " << spoof_ip_v4 << "\n";
 
     while (true) {
         uint8_t buf[512];
@@ -217,7 +220,7 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
             continue;
         }
 
-        std::cerr << "DNS matched, returning " <<  spoof_ip_v4 << "..." << std::endl;
+        term << "[dns] DNS matched, returning " <<  spoof_ip_v4 << "..." << std::endl;
 
         auto resp = build_dns_response_a(req, match, ip_be, 60);
         if (resp.empty()) continue;
