@@ -19,9 +19,15 @@
 #include <limits>
 #include <cstdint>
 
+struct ServerContext;
+
 class dns {
 public:
-    static void run_dns_server_udp_53(const std::string &spoof_ip_v4, const std::string &suffix);
+    static   void run_dns_server_udp_53(
+        ServerContext& ctx,
+        const std::string& spoof_ip_v4,
+        const std::string& suffix
+    );
 };
 
 

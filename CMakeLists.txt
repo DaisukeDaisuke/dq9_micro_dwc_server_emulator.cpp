@@ -7,7 +7,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(dq9-server src/main.cpp
         src/dns.cpp
         src/dns.h
-        src/sockets.h)
+        src/sockets.h
+        src/ServerContext.h
+        src/SSLHelper.cpp
+        src/SSLHelper.h
+        src/HTTPHelper.cpp
+        src/HTTPHelper.h
+        src/FileHelper.cpp
+        src/FileHelper.h
+        src/RequestHandler.cpp
+        src/RequestHandler.h)
 
 # GCC系（Linux gcc / MinGW gcc）向け
 target_compile_options(dq9-server PRIVATE -O0 -Wall -Wextra -Wpedantic)

@@ -3,7 +3,11 @@
 //
 
 #include "dns.h"
+
+#include "ServerContext.h"
 #include "sockets.h"
+
+struct ServerContext;
 
 static bool ends_with_domain_ci(const std::string& name, const std::string& suffix) {
     auto lower = [](std::string s){
@@ -136,7 +140,7 @@ static std::vector<uint8_t> build_dns_response_a(
     return out;
 }
 
-void dns::run_dns_server_udp_53(const std::string& spoof_ip_v4, const std::string& suffix = "nintendowifi.net") {
+void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v4, const std::string& suffix = "nintendowifi.net"){
     sockets_init_once();
 
     socket_t s = ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -144,6 +148,8 @@ void dns::run_dns_server_udp_53(const std::string& spoof_ip_v4, const std::strin
 
     int opt = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+
+    ctx.dns_sock = s;
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -179,7 +185,14 @@ void dns::run_dns_server_udp_53(const std::string& spoof_ip_v4, const std::strin
         socklen_t plen = sizeof(peer);
 #endif
         int n = recvfrom(s, (char*)buf, (int)sizeof(buf), 0, (sockaddr*)&peer, &plen);
-        if (n <= 0) continue;
+        if (n <= 0) {
+            if (ctx.stop.load()) break;
+            continue;
+        }
+        if (ctx.stop.load()) {
+            socket_close(s);
+            break;
+        }
 
         std::vector<uint8_t> req(buf, buf + n);
 
@@ -203,6 +216,8 @@ void dns::run_dns_server_udp_53(const std::string& spoof_ip_v4, const std::strin
             // 無応答
             continue;
         }
+
+        std::cerr << "DNS matched, returning " <<  spoof_ip_v4 << "..." << std::endl;
 
         auto resp = build_dns_response_a(req, match, ip_be, 60);
         if (resp.empty()) continue;
