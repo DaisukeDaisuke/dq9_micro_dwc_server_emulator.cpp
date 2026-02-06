@@ -9,6 +9,8 @@
 #include <sstream>
 
 #include "FileHelper.h"
+#include "nowdate.h"
+#include "Safety.h"
 #include "terminal.h"
 
 
@@ -104,6 +106,10 @@ std::string base64_encode_replace(const std::string& input) {
 
 
 bool is_valid_path(const std::string& path) {
+    if (Safety::contains_ctl_or_nul(path)) {
+        return false;
+    }
+
     // ".." が含まれていれば不正
     if (path.find("..") != std::string::npos) {
         return false;
@@ -284,6 +290,9 @@ void RequestHandler::handle_request(const std::string& request_line,
 
     // Very simplified: if Host==nas.nintendowifi.net => return LOGIN like python
     if (host_only == "nas.nintendowifi.net") {
+
+        auto date = nowdate::get_current_time_rfc1123();
+
         std::string sbody(body.begin(), body.end());
 
         std::string action = extract_and_decode_param(sbody, "action");
@@ -292,7 +301,7 @@ void RequestHandler::handle_request(const std::string& request_line,
             term << "[https]["<< gamecd << "] Processing Login... " << std::endl;
             std::string b =
                     "returncd=" + base64_encode_replace("001") +
-                    "&date=" + base64_encode_replace("Fri, 01 Jan 2010 00:00:00 GMT") +
+                    "&date=" + base64_encode_replace(date) +
                     "&retry=" + base64_encode_replace("0") +
                     "&locator=" + base64_encode_replace("gamespy.com") +
                     "&challenge=" + base64_encode_replace("RNR1HLAS") +
@@ -302,7 +311,7 @@ void RequestHandler::handle_request(const std::string& request_line,
 
             std::map<std::string, std::string> h;
             h["Content-Length"] = std::to_string(b.size());
-            h["Date"] = "Fri, 01 Jan 2010 00:00:00 GMT";
+            h["Date"] = date;
             std::vector<uint8_t> bodyv(b.begin(), b.end());
             out_resp = make_response_bytes(200, "OK", h, bodyv);
             return;
@@ -325,7 +334,7 @@ void RequestHandler::handle_request(const std::string& request_line,
 
             std::map<std::string, std::string> h;
             h["Content-Length"] = std::to_string(b.size());
-            h["Date"] = "Fri, 01 Jan 2010 00:00:00 GMT";
+            h["Date"] = date;
             std::vector<uint8_t> bodyv(b.begin(), b.end());
             out_resp = make_response_bytes(200, "OK", h, bodyv);
             return;

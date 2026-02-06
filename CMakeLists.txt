@@ -19,6 +19,11 @@ add_executable(dq9-server src/main.cpp
         src/RequestHandler.cpp
         src/RequestHandler.h
         src/terminal.h
+        src/safety.cpp
+        src/Safety.cpp
+        src/Safety.h
+        src/nowdate.cpp
+        src/nowdate.h
 )
 
 # MinGWビルドかMSVCビルドかを判別するフラグを定義

@@ -152,7 +152,10 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
 
 
     socket_t s = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (s == kInvalidSocket) { perror("dns socket"); return; }
+    if (s == kInvalidSocket) {
+        term << "[dns] Initializing socket: error" << std::endl;
+        perror("dns socket"); return;
+    }
 
     int opt = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
@@ -167,8 +170,8 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
     addr.sin_port = htons(port);
 
 
-
     if (bind(s, (sockaddr*)&addr, sizeof(addr)) != 0) {
+        term << "[dns] Binding socket: error" << std::endl;
         perror("dns bind");
         socket_close(s);
         return;

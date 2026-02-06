@@ -26,7 +26,10 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
     sockets_init_once();
 
     socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == kInvalidSocket) { perror("http socket"); return; }
+    if (sock == kInvalidSocket) {
+        term << "[http] Initializing socket: error" << std::endl;
+        perror("http socket"); return;
+    }
 
     ctx.http_sock = sock;
     int opt = 1;
@@ -40,6 +43,7 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
     addr.sin_port = htons((uint16_t)port);
 
     if (bind(sock, (sockaddr*)&addr, sizeof(addr)) != 0) {
+        term << "[http] Binding socket: error" << std::endl;
         perror("http bind");
         socket_close(sock);
         return;
@@ -50,6 +54,7 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
 
 
     if (listen(sock, 8) != 0) {
+        term << "[http] Listening on port " << port << ": error" << std::endl;
         perror("http listen");
         socket_close(sock);
         return;

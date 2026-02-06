@@ -9,6 +9,7 @@
 
 #include <csignal>
 
+#include "nowdate.h"
 #include "terminal.h"
 
 static ServerContext* g_ctx = nullptr;
@@ -47,6 +48,10 @@ void wait_for_input(ServerContext& ctx)
 
 int main(int argc, char** argv)
 {
+    auto nowdate = nowdate::get_current_time_rfc1123();
+
+    std::cout << "Now: " << nowdate << std::endl;
+
     const char* ipconfg = R"(.\ip.txt)";
 
     ServerContext ctx1;
