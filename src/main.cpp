@@ -76,7 +76,6 @@ void on_sigint(int)
         if (g_ctx->dns_sock   != kInvalidSocket) socket_close(g_ctx->dns_sock);
         if (g_ctx->http_sock  != kInvalidSocket) socket_close(g_ctx->http_sock);
         if (g_ctx->https_sock != kInvalidSocket) socket_close(g_ctx->https_sock);
-        if (g_ctx->https_sock2 != kInvalidSocket) socket_close(g_ctx->https_sock2);
     }
 }
 
@@ -95,7 +94,6 @@ void wait_for_input(ServerContext& ctx)
     if (ctx.dns_sock   != kInvalidSocket) socket_close(ctx.dns_sock);
     if (ctx.http_sock  != kInvalidSocket) socket_close(ctx.http_sock);
     if (ctx.https_sock != kInvalidSocket) socket_close(ctx.https_sock);
-    if (ctx.https_sock2 != kInvalidSocket) socket_close(ctx.https_sock2);
 }
 
 
