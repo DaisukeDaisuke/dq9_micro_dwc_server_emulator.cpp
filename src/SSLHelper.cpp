@@ -127,7 +127,7 @@ void init_openssl() {
     OSSL_PROVIDER_load(nullptr, "legacy");
 }
 
-int SSLHelper::Main(ServerContext& ctx2) {
+int SSLHelper::Main(ServerContext& ctx2, int port) {
     terminal term;
     
     sockets_init_once();
@@ -135,16 +135,13 @@ int SSLHelper::Main(ServerContext& ctx2) {
     const char* cert_file = R"(.\dummy-certs\server.crt)";
     const char* key_file = R"(.\dummy-certs\server.key)";
     const char* cert_nwc_file = R"(.\dummy-certs\nwc.crt)";
-
-    int port = DEFAULT_PORT;
 #else
     const char* cert_file = "/etc/ssl/certs/server.crt";
     const char* key_file = "/etc/ssl/private/server.key";
     const char* cert_nwc_file = "/etc/ssl/certs/nwc.crt";
-    int port = DEFAULT_PORT;
 #endif
 
-     term << "[https] Starting server on port " << port << std::endl;
+     term << "[https][" << port << "] Starting server on port " << port << std::endl;
 
     init_openssl();
 
@@ -164,32 +161,32 @@ int SSLHelper::Main(ServerContext& ctx2) {
     SSL_CTX_set_min_proto_version(ctx, SSL3_VERSION);
     SSL_CTX_set_max_proto_version(ctx, SSL3_VERSION);
 
-    term << "[https] Initializing OpenSSL: ok" << std::endl;
+    term << "[https][" << port << "] Initializing OpenSSL: ok" << std::endl;
 
     if (!SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM)) {
-        term << "[https] Initializing server.crt: Failed to initialize server.crt" << std::endl;
+        term << "[https][" << port << "] Initializing server.crt: Failed to initialize server.crt" << std::endl;
         std::cerr << "Certificate/key load failed1" << std::endl;
         ERR_print_errors_fp(stderr);
         std::cerr << std::flush;
         return 1;
     }
 
-    term << "[https] Initializing server.crt: ok" << std::endl;
+    term << "[https][" << port << "] Initializing server.crt: ok" << std::endl;
 
     if (!SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM)) {
-        term << "[https] Initializing server.key: Failed to initialize server.key" << std::endl;
+        term << "[https][" << port << "] Initializing server.key: Failed to initialize server.key" << std::endl;
         std::cerr << "Certificate/key load failed2" << std::endl;
         ERR_print_errors_fp(stderr);
         std::cerr << std::flush;
         return 1;
     }
 
-    term << "[https] Initializing server.key: ok" << std::endl;
+    term << "[https][" << port << "] Initializing server.key: ok" << std::endl;
 
     auto handle = fopen(cert_nwc_file, "r");
     if (!handle) {
-        term << "[https] Initializing nwc.crt: file not found" << std::endl;
-        term << "[https] Certificate file open failed: " << cert_nwc_file << ", Unable to start application" << std::endl;
+        term << "[https][" << port << "] Initializing nwc.crt: file not found" << std::endl;
+        term << "[https][" << port << "] Certificate file open failed: " << cert_nwc_file << ", Unable to start application" << std::endl;
         return 1;
     }
 
@@ -198,7 +195,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
         if (chain_cert) {
             X509_free(chain_cert);
         }
-        term << "[https] Initializing nwc.crt: Failed to load nwc.crt(openssl fault) " << std::endl;
+        term << "[https][" << port << "] Initializing nwc.crt: Failed to load nwc.crt(openssl fault) " << std::endl;
         term << "Certificate/key load failed2" << std::endl;
         ERR_print_errors_fp(stderr);
         std::cerr << std::flush;
@@ -208,17 +205,17 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
     fclose(handle);
 
-    term << "[https] Initializing nwc.crt: ok" << std::endl;
+    term << "[https][" << port << "] Initializing nwc.crt: ok" << std::endl;
 
     if (!SSL_CTX_set_cipher_list(ctx, "RC4-SHA:RC4-MD5")) {
-        term << "[https] Initializing Cipher: error" << std::endl;
+        term << "[https][" << port << "] Initializing Cipher: error" << std::endl;
         term << "Failed to set cipher list" << std::endl;
         ERR_print_errors_fp(stderr);
         std::cerr << std::flush;
         return 1;
     }
 
-    term << "[https] Initializing Cipher: ok" << std::endl;
+    term << "[https][" << port << "] Initializing Cipher: ok" << std::endl;
 
     // socket setup
     socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -232,22 +229,24 @@ int SSLHelper::Main(ServerContext& ctx2) {
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons((uint16_t)port);
 
-    term << "[https] Initializing socket: ok" << std::endl;
+    term << "[https][" << port << "] Initializing socket: ok" << std::endl;
 
 
 
     if (bind(sock, (sockaddr*)&addr, sizeof(addr)) != 0) {
-        term << "[https] Binding socket: error" << std::endl;
+        term << "[https][" << port << "] Binding socket: error" << std::endl;
         perror("bind"); socket_close(sock); return 1;
     }
 
     if (listen(sock, 8) != 0) {
-        term << "[https] Listening on port " << port << ": error" << std::endl;
+        term << "[https][" << port << "] Listening on port " << port << ": error" << std::endl;
         perror("listen"); socket_close(sock); return 1;
     }
-    term << "[https] Listening on port " << port << ": ok (SSLv3 + RC4)" << std::endl;
+    term << "[https][" << port << "] Listening on port " << port << ": ok (SSLv3 + RC4)" << std::endl;
 
-    ctx2.https_sock = sock;
+    if (ctx2.https_sock == kInvalidSocket) {
+        ctx2.https_sock = sock;
+    }
 
     while (true) {
         sockaddr_in peer{};
@@ -270,14 +269,14 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
         // ★ここ：SSLv3ハンドシェイク（SSL_accept）も維持
         if (SSL_accept(ssl) <= 0) {
-            term << "[https] Accepted connection... SSL handshake: error" << std::endl;
-            term << "[https] SSL_accept failed" << std::endl;
+            term << "[https][" << port << "] Accepted connection... SSL handshake: error" << std::endl;
+            term << "[https][" << port << "] SSL_accept failed" << std::endl;
             ERR_print_errors_fp(stderr);
             std::cerr << std::flush;
             socket_close(client);
             continue;
         }
-        term << "[https] Accepted connection... SSL handshake: ok" << std::endl;
+        term << "[https][" << port << "] Accepted connection... SSL handshake: ok" << std::endl;
 
         std::string leftover_body;
         std::string header_block = read_until_double_crlf(ssl, leftover_body);
@@ -293,20 +292,20 @@ int SSLHelper::Main(ServerContext& ctx2) {
             try {
                 unsigned long long v = std::stoull(it->second);
                 if (v > static_cast<unsigned long long>(MAX_BODY_BYTES)) {
-                    std::cerr << "[https] Body too large: " << v << " bytes" << std::endl;
+                    std::cerr << "[https][" << port << "] Body too large: " << v << " bytes" << std::endl;
                     SSL_shutdown(ssl);
                     socket_close(client);
                     continue;
                 }
                 if (v > std::numeric_limits<size_t>::max()) {
-                    std::cerr << "[https] Content-Length out of range\n";
+                    std::cerr << "[https][" << port << "] Content-Length out of range\n";
                     SSL_shutdown(ssl);
                     socket_close(client);
                     continue;
                 }
                 content_len = (size_t)v;
             } catch (...) {
-                std::cerr << "[https] Invalid Content-Length" << std::endl;
+                std::cerr << "[https][" << port << "] Invalid Content-Length" << std::endl;
                 content_len = 0;
             }
 

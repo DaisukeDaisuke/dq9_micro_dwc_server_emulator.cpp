@@ -9,7 +9,7 @@
 
 class SSLHelper {
 public:
-    static int Main(ServerContext& ctx2);
+    static int Main(ServerContext& ctx2, int port);
 };
 
 

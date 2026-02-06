@@ -321,15 +321,20 @@ void RequestHandler::handle_request(const std::string& request_line,
             std::string svc = extract_and_decode_param(sbody, "svc");
             std::string b = "returncd=" + base64_encode_replace("007") +
                             "&statusdata=" + base64_encode_replace("Y") +
-                            "&retry=" + base64_encode_replace("0") +
-                            "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
+                            "&retry=" + base64_encode_replace("0");
 
             if (svc == "9000") {
                 b = b + "&svchost=" + base64_encode_replace(
                         "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
-            } else {
+                b += "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
+            } if (svc == "0000") {
+                b = b + "&servicetoken=" + base64_encode_replace(
+                                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
+                b += "&svchost=" + base64_encode_replace("n/a");
+            }else {
                 b = b + "&servicetoken=" + base64_encode_replace(
                         "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
+                b += "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
             }
 
             std::map<std::string, std::string> h;
