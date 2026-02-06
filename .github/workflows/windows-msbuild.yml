@@ -14,11 +14,11 @@ jobs:
       OPENSSL_VERSION: 1.1.1w
       OPENSSL_PREFIX: ${{ github.workspace }}/openssl-1.1.1w
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Restore OpenSSL cache
         id: cache-openssl
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.OPENSSL_PREFIX }}
           key: openssl-${{ env.OPENSSL_VERSION }}-linux
@@ -50,7 +50,7 @@ jobs:
           rm WII_NWC_1_CERT.p12 keys.txt nwc.key nwc.srl server.csr
 
       - name: Upload dummy-certs artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dummy-certs
           path: dummy-certs
@@ -65,11 +65,11 @@ jobs:
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Restore OpenSSL cache
         id: cache-openssl
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.OPENSSL_INSTALL }}
           key: openssl-${{ env.OPENSSL_VERSION }}-windows-msvc
@@ -116,7 +116,7 @@ jobs:
           Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}\Release" -Force
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-msbuild
           path: |
@@ -129,13 +129,13 @@ jobs:
       - build
     steps:
       - name: Download windows build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: windows-msbuild
           path: merged/windows
 
       - name: Download dummy-certs artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: dummy-certs
           path: merged/dummy-certs
@@ -151,7 +151,7 @@ jobs:
           echo "Merge completed"
 
       - name: Upload merged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-msbuild-with-dummy-certs
           path: merged/windows
