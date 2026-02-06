@@ -69,14 +69,6 @@ RUN make install_sw
 RUN mkdir -p "/stage/openssl"
 RUN cp -rT ${PREFIX} /stage/openssl
 
-
-# Also drop a tiny "how to link" note (optional)
-RUN mkdir -p /stage/openssl/_notes \
- && printf "%s\n" \
-"Static link on Windows typically needs: -lws2_32 -lgdi32 -ladvapi32 -lcrypt32 -luser32" \
-"See OpenSSL NOTES-WINDOWS.md for details." \
-> /stage/openssl/_notes/linking.txt
-
 # Create outputs:
 # 1) Directory tree (handy if you want to copy as-is)
 # 2) Tarball with normalized ownership/permissions (recommended for Windows extraction)
