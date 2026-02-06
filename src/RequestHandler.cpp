@@ -4,6 +4,7 @@
 
 #include "RequestHandler.h"
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -268,6 +269,36 @@ static std::size_t count_lines_after_normalize_cr_terminated(const std::string& 
     return count;
 }
 
+
+// タブ区切りで単語数を数える
+size_t count_words_tab(const std::string& s) {
+    if (s.empty()) return 0;
+
+    size_t count = 1;
+    for (char c : s) {
+        if (c == '\t') ++count;
+    }
+    return count;
+}
+
+// 現在時刻 YYYYMMDDHHMMSS
+std::string now_datetime() {
+
+    auto now = std::chrono::system_clock::now();
+    std::time_t tt = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &tt);
+#else
+    localtime_r(&tt, &tm);
+#endif
+
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y%m%d%H%M%S");
+    return oss.str();
+}
+
+
 // Minimal handler: mimic server_v3.py behaviour for /download endpoints and login
 void RequestHandler::handle_request(const std::string& request_line,
     const std::map<std::string,std::string>& headers,
@@ -291,58 +322,88 @@ void RequestHandler::handle_request(const std::string& request_line,
     // Very simplified: if Host==nas.nintendowifi.net => return LOGIN like python
     if (host_only == "nas.nintendowifi.net") {
 
-        auto date = nowdate::get_current_time_rfc1123();
+        if (request_line.find(" /ac ") != std::string::npos) {
+            auto date = nowdate::get_current_time_rfc1123();
 
-        std::string sbody(body.begin(), body.end());
+            std::string sbody(body.begin(), body.end());
 
-        std::string action = extract_and_decode_param(sbody, "action");
-        std::string gamecd = extract_and_decode_param(sbody, "gamecd");
-        if (action == "login" || action == "LOGIN") {
-            term << "[https]["<< gamecd << "] Processing Login... " << std::endl;
-            std::string b =
-                    "returncd=" + base64_encode_replace("001") +
-                    "&date=" + base64_encode_replace(date) +
-                    "&retry=" + base64_encode_replace("0") +
-                    "&locator=" + base64_encode_replace("gamespy.com") +
-                    "&challenge=" + base64_encode_replace("RNR1HLAS") +
-                    "&token=" + base64_encode_replace(
-                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89"
-                    );
+            std::string action = extract_and_decode_param(sbody, "action");
+            std::string gamecd = extract_and_decode_param(sbody, "gamecd");
+            if (action == "login" || action == "LOGIN") {
+                term << "[https]["<< gamecd << "] Processing Login... " << std::endl;
+                std::string b =
+                        "returncd=" + base64_encode_replace("001") +
+                        "&date=" + base64_encode_replace(date) +
+                        "&retry=" + base64_encode_replace("0") +
+                        "&locator=" + base64_encode_replace("gamespy.com") +
+                        "&challenge=" + base64_encode_replace("RNR1HLAS") +
+                        "&token=" + base64_encode_replace(
+                            "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89"
+                        );
 
-            std::map<std::string, std::string> h;
-            h["Content-Length"] = std::to_string(b.size());
-            h["Date"] = date;
-            std::vector<uint8_t> bodyv(b.begin(), b.end());
-            out_resp = make_response_bytes(200, "OK", h, bodyv);
-            return;
-        }
-        if (action == "svcloc" || action == "SVCLOC") {
-            term << "[https][" << gamecd << "] request cdn url" << std::endl;
-            std::string svc = extract_and_decode_param(sbody, "svc");
-            std::string b = "returncd=" + base64_encode_replace("007") +
-                            "&statusdata=" + base64_encode_replace("Y") +
-                            "&retry=" + base64_encode_replace("0");
+                std::map<std::string, std::string> h;
+                h["Content-Length"] = std::to_string(b.size());
+                h["Date"] = date;
+                std::vector<uint8_t> bodyv(b.begin(), b.end());
+                out_resp = make_response_bytes(200, "OK", h, bodyv);
+                return;
+            }
+            if (action == "svcloc" || action == "SVCLOC") {
+                term << "[https][" << gamecd << "] request cdn url" << std::endl;
+                std::string svc = extract_and_decode_param(sbody, "svc");
+                std::string b = "returncd=" + base64_encode_replace("007") +
+                                "&statusdata=" + base64_encode_replace("Y") +
+                                "&retry=" + base64_encode_replace("0");
 
-            if (svc == "9000") {
-                b = b + "&svchost=" + base64_encode_replace(
-                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
-                b += "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
-            } if (svc == "0000") {
-                b = b + "&servicetoken=" + base64_encode_replace(
-                                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
-                b += "&svchost=" + base64_encode_replace("n/a");
-            }else {
-                b = b + "&servicetoken=" + base64_encode_replace(
-                        "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
-                b += "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
+                // TODO: Random token
+                if (svc == "9000") {
+                    b = b + "&token=" + base64_encode_replace(
+                            "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
+                    b += "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
+                } if (svc == "0000") {
+                    b = b + "&servicetoken=" + base64_encode_replace(
+                                            "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
+                    b += "&svchost=" + base64_encode_replace("n/a");
+                }else {
+                    b = b + "&servicetoken=" + base64_encode_replace(
+                            "NDSX0zyY6Wc6SQ6GnvXStABwbFCBjgt+MVQyhs1vMO5qsMnBePlcnGOjjPTcloogWX03yHVP9Q5xnUms8jZUzyd2W9ytWFtlwUOhAcO0x9WfFv2qPNFNr9O0ehktRYRcv89");
+                    b += "&svchost=" + base64_encode_replace("dls1.nintendowifi.net");
+                }
+
+                std::map<std::string, std::string> h;
+                h["Content-Length"] = std::to_string(b.size());
+                h["Date"] = date;
+                std::vector<uint8_t> bodyv(b.begin(), b.end());
+                out_resp = make_response_bytes(200, "OK", h, bodyv);
+                return;
+            }
+        }else if (request_line.find(" /pr ") != std::string::npos) {
+            term << "[https] Processing PR... " << std::endl;
+            std::string sbody(body.begin(), body.end());
+            std::cout << sbody << std::endl;
+            std::cout << sbody << std::endl;
+            std::string words1 = extract_and_decode_param(sbody, "words");
+
+            size_t words = count_words_tab(words1);
+            std::string wordsret(words, '0');
+
+            std::string b;
+            b += "prwords=" + base64_encode_replace(wordsret);
+            b += "&returncd=" + base64_encode_replace("000");
+            b += "&datetime=" + base64_encode_replace(now_datetime());
+
+            for (char l : std::string("ACEJKP")) {
+                b += "&prwords";
+                b += l;
+                b += "=" + base64_encode_replace(wordsret);
             }
 
-            std::map<std::string, std::string> h;
+            std::map<std::string,std::string> h;
+            h["Content-type"] = "text/plain";
+            h["NODE"] = "wifiappe1";
             h["Content-Length"] = std::to_string(b.size());
-            h["Date"] = date;
             std::vector<uint8_t> bodyv(b.begin(), b.end());
             out_resp = make_response_bytes(200, "OK", h, bodyv);
-            return;
         }
     } else if (host_only == "dls1.nintendowifi.net") {
         // if path starts with /download and action=list -> return small listing
