@@ -24,7 +24,9 @@
 #include <openssl/provider.h>
 #include <cctype>
 
+#if defined(MSVC_BUILD)
 #include "applink.c"
+#endif
 
 #include "dns.h"
 #include "ServerContext.h"
@@ -34,8 +36,6 @@ static const int DEFAULT_PORT = 443;
 static const size_t RECV_BUF = 8192;
 static const size_t SEND_CHUNK = 768; // tuneable: 512..1024 通らないなら1024にする
 static const size_t MAX_BODY_BYTES = 5u * 1024u * 1024u; // 100MB上限
-
-
 
 
 void ssl_write_split(SSL* ssl, const std::vector<uint8_t>& data) {
@@ -174,7 +174,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
     auto handle = fopen(cert_nwc_file, "r");
     if (!handle) {
-        term << "Certificate file open failed: " << cert_nwc_file << std::endl;
+        term << "[https] Certificate file open failed: " << cert_nwc_file << ", Unable to start application" << std::endl;
         return 1;
     }
 
@@ -251,7 +251,7 @@ int SSLHelper::Main(ServerContext& ctx2) {
 
         // ★ここ：SSLv3ハンドシェイク（SSL_accept）も維持
         if (SSL_accept(ssl) <= 0) {
-            term << "SSL_accept failed" << std::endl;
+            term << "[https] SSL_accept failed" << std::endl;
             ERR_print_errors_fp(stderr);
             std::cerr << std::flush;
             socket_close(client);

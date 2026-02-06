@@ -338,6 +338,8 @@ void RequestHandler::handle_request(const std::string& request_line,
             std::string gamecd = extract_and_decode_param(sbody, "gamecd");
 
             if (!isValidGameCd(gamecd) || gamecd.empty()) {
+                term << "[https] invalid gamecd! Send failure..." << std::endl;
+
                 std::string b = "err";
                 std::vector<uint8_t> bodyv(b.begin(), b.end());
                 std::map<std::string,std::string> h;
@@ -351,6 +353,7 @@ void RequestHandler::handle_request(const std::string& request_line,
                 std::string path = "./dlc/" + gamecd + "/_list.txt";
                 std::string data = FileHelper::readAll(path);
                 if (data.empty()) {
+                    term << "[https]["<< gamecd <<"] dlc file not found! Send failure... requested: " << path << std::endl;
                     std::string b = "err";
                     std::vector<uint8_t> bodyv(b.begin(), b.end());
                     std::map<std::string,std::string> h;
@@ -377,6 +380,8 @@ void RequestHandler::handle_request(const std::string& request_line,
                 std::string path = "./dlc/" + gamecd + "/_list.txt";
                 std::string data = FileHelper::readAll(path);
                 if (data.empty()) {
+                    term << "[https]["<< gamecd <<"] dlc file not found! Send failure... requested: " << path << std::endl;
+
                     std::string b = "err";
                     std::vector<uint8_t> bodyv(b.begin(), b.end());
                     std::map<std::string,std::string> h;
@@ -398,6 +403,7 @@ void RequestHandler::handle_request(const std::string& request_line,
             if (action == "CONTENTS" || action == "contents") {
                 const std::string contents = extract_and_decode_param(sbody, "contents");
                 if (!is_valid_path(contents)) {
+                    term << "[https]["<< gamecd <<"] invalid path! Send failure..." << std::endl;
                     std::string b = "err";
                     std::vector<uint8_t> bodyv(b.begin(), b.end());
                     std::map<std::string,std::string> h;
@@ -421,12 +427,15 @@ void RequestHandler::handle_request(const std::string& request_line,
                     out_resp = make_response_bytes(200, "OK", h, filev);
                     return;
                 }
+                term << "[https]["<< gamecd <<"] file not found! Send failure... requested: " << basic_string << std::endl;
                 std::string b = "err";
                 std::vector<uint8_t> bodyv(b.begin(), b.end());
                 std::map<std::string,std::string> h;
                 out_resp = make_response_bytes(404, "Not Found", h, bodyv);
             }
         }
+    } else {
+      term << "[https] unknown host: " << host << std::endl;
     }
 
     // default

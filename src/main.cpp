@@ -51,13 +51,20 @@ int main(int argc, char** argv)
 
     ServerContext ctx1;
 
+    auto ip = FileHelper::readAll(ipconfg);
+
+    if (ip.empty()) {
+        std::cerr << "[main.cpp] ip.txt is empty or not found! Unable to start application!" << std::endl;
+        return 1;
+    }
+
     g_ctx = &ctx1;
     std::signal(SIGINT, on_sigint);
 
     std::thread dns_thread(
         dns::run_dns_server_udp_53,
         std::ref(ctx1),
-        FileHelper::readAll(ipconfg),
+        ip,
         std::string("nintendowifi.net")
     );
     std::thread http_thread(

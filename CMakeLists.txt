@@ -4,6 +4,7 @@ project(dq9-server CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# applink.c = 3.0.19
 add_executable(dq9-server src/main.cpp
         src/dns.cpp
         src/dns.h
@@ -18,7 +19,6 @@ add_executable(dq9-server src/main.cpp
         src/RequestHandler.cpp
         src/RequestHandler.h
         src/terminal.h
-        src/applink.c
 )
 
 # MinGWビルドかMSVCビルドかを判別するフラグを定義
@@ -31,11 +31,12 @@ elseif(MSVC)
 endif()
 
 if(MSVC)
+    target_sources(dq9-server PRIVATE src/applink.c)
     target_compile_options(dq9-server PRIVATE /W4 /MP)  # `/MP` で並列コンパイル
-    target_link_options(dq9-server PRIVATE /INCREMENTAL:NO /DEBUG)
+    target_link_options(dq9-server PRIVATE /INCREMENTAL:NO /DEBUG:FULL)
 
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi /O2")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG:FULL /OPT:REF /OPT:ICF")
 endif()
 
 # --- MinGW (Windows GCC) 分岐 ---
