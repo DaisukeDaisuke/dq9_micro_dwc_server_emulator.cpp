@@ -14,14 +14,13 @@
 #include "Safety.h"
 #include "terminal.h"
 
+thread_local static bool table_initialized = false;
+thread_local static int8_t decode_table[256];
 
 bool base64_decode_star_as_pad(const std::string& input, std::string& output) {
     static const int8_t table[256] = {
         -1
     };
-
-    static bool table_initialized = false;
-    static int8_t decode_table[256];
 
     if (!table_initialized) {
         for (int i = 0; i < 256; ++i) decode_table[i] = -1;
@@ -110,6 +109,11 @@ bool is_valid_path(const std::string& path) {
     if (Safety::contains_ctl_or_nul(path)) {
         return false;
     }
+    if (path.empty() || path.size() > 255) return false;
+    for (unsigned char c : path) {
+        if (std::iscntrl(c)) return false;
+        if (c == '"' || c == '\'' || c == ';' || c == '/' || c == '\\') return false;
+    }
 
     // ".." が含まれていれば不正
     if (path.find("..") != std::string::npos) {
@@ -141,6 +145,9 @@ static std::vector<uint8_t> make_response_bytes(int status, const std::string& r
     std::ostringstream ss;
     ss << "HTTP/1.1 " << status << " " << reason << "\r\n";
     for (const auto &kv : headers) {
+        if (Safety::contains_ctl_or_nul(kv.first) || Safety::contains_ctl_or_nul(kv.second)) {
+            return {};
+        }
         ss << kv.first << ": " << kv.second << "\r\n";
     }
     ss << "\r\n";
@@ -164,6 +171,45 @@ bool isValidGameCd(const std::string& gamecd) {
 
     return true;
 }
+
+#include <cctype>
+
+static bool hex_to_byte(char hi, char lo, unsigned char &out) {
+    auto hexval = [](char c)->int {
+        if ('0'<=c && c<='9') return c - '0';
+        if ('A'<=c && c<='F') return c - 'A' + 10;
+        if ('a'<=c && c<='f') return c - 'a' + 10;
+        return -1;
+    };
+    int h = hexval(hi), l = hexval(lo);
+    if (h<0 || l<0) return false;
+    out = (unsigned char)((h<<4) | l);
+    return true;
+}
+
+static std::string url_decode(const std::string &s) {
+    std::string r;
+    r.reserve(s.size());
+    for (size_t i=0;i<s.size();++i) {
+        char c = s[i];
+        if (c == '+') {
+            r.push_back(' ');
+        } else if (c == '%' && i+2 < s.size()) {
+            unsigned char b;
+            if (hex_to_byte(s[i+1], s[i+2], b)) {
+                r.push_back((char)b);
+                i += 2;
+            } else {
+                // 不正な%エンコーディング: そのままコピー or エラー扱い
+                r.push_back('%');
+            }
+        } else {
+            r.push_back(c);
+        }
+    }
+    return r;
+}
+
 
 std::string extract_and_decode_param(
     const std::string& sbody,
@@ -190,15 +236,9 @@ std::string extract_and_decode_param(
 
     // %2a / %2A を * に置換（Base64デコード前処理）
     {
-        std::string::size_type p = 0;
-        while ((p = encoded.find("%2a", p)) != std::string::npos) {
-            encoded.replace(p, 3, "*");
-            p += 1;
-        }
-        p = 0;
-        while ((p = encoded.find("%2A", p)) != std::string::npos) {
-            encoded.replace(p, 3, "*");
-            p += 1;
+        encoded = url_decode(encoded);
+        if (Safety::contains_ctl_or_nul(encoded)) {
+            return {};
         }
     }
 
@@ -281,6 +321,36 @@ size_t count_words_tab(const std::string& s) {
     return count;
 }
 
+bool build_safe_dlc_path(
+    const std::string& gamecd,
+    const std::string& contents,
+    std::string& out_path)
+{
+    // 1) gamecd チェック（既存関数前提）
+    if (!isValidGameCd(gamecd) || gamecd.empty())
+        return false;
+
+    // 2) contents チェック（既存関数前提）
+    if (!is_valid_path(contents) || contents.empty())
+        return false;
+
+    // 3) 単純な脱出防止
+    if (contents.find("..") != std::string::npos)
+        return false;
+
+    if (contents.find('\\') != std::string::npos)
+        return false;
+
+    if (!contents.empty() && contents[0] == '/')
+        return false;
+
+    // 4) 最終パス生成
+    out_path = "./dlc/" + gamecd + "/" + contents;
+
+    return true;
+}
+
+
 // 現在時刻 YYYYMMDDHHMMSS
 std::string now_datetime() {
 
@@ -329,6 +399,14 @@ void RequestHandler::handle_request(const std::string& request_line,
 
             std::string action = extract_and_decode_param(sbody, "action");
             std::string gamecd = extract_and_decode_param(sbody, "gamecd");
+            if (!isValidGameCd(gamecd) || gamecd.empty()) {
+                term << "[https] invalid gamecd! Send failure..." << std::endl;
+                std::string b = "err";
+                std::vector<uint8_t> bodyv(b.begin(), b.end());
+                std::map<std::string,std::string> h;
+                out_resp = make_response_bytes(401, "err", h, bodyv);
+                return;
+            }
             if (action == "login" || action == "LOGIN") {
                 term << "[https]["<< gamecd << "] Processing Login... " << std::endl;
                 std::string b =
@@ -380,8 +458,6 @@ void RequestHandler::handle_request(const std::string& request_line,
         }else if (request_line.find(" /pr ") != std::string::npos) {
             term << "[https] Processing PR... " << std::endl;
             std::string sbody(body.begin(), body.end());
-            std::cout << sbody << std::endl;
-            std::cout << sbody << std::endl;
             std::string words1 = extract_and_decode_param(sbody, "words");
 
             size_t words = count_words_tab(words1);
@@ -425,8 +501,16 @@ void RequestHandler::handle_request(const std::string& request_line,
             if (action == "count" || action == "COUNT") {
                  term << "[https]["<< gamecd <<"] sending count..."  << std::endl;
 
-                std::string path = "./dlc/" + gamecd + "/_list.txt";
-                std::string data = FileHelper::readAll(path);
+                std::string safe_path;
+                if (!build_safe_dlc_path(gamecd, "_list.txt", safe_path)) {
+                    std::string b = "err";
+                    std::vector<uint8_t> bodyv(b.begin(), b.end());
+                    std::map<std::string,std::string> h;
+                    out_resp = make_response_bytes(400, "err", h, bodyv);
+                    return;
+                }
+
+                std::string data = FileHelper::readAll(safe_path);
                 if (data.empty()) {
                     term << "[https]["<< gamecd <<"] dlc file not found! Send failure... requested: " << path << std::endl;
                     std::string b = "err";
@@ -452,8 +536,15 @@ void RequestHandler::handle_request(const std::string& request_line,
 
                  term << "[https]["<< gamecd <<"] sending list... " << std::endl;
 
-                std::string path = "./dlc/" + gamecd + "/_list.txt";
-                std::string data = FileHelper::readAll(path);
+                std::string safe_path;
+                if (!build_safe_dlc_path(gamecd, "_list.txt", safe_path)) {
+                    std::string b = "err";
+                    std::vector<uint8_t> bodyv(b.begin(), b.end());
+                    std::map<std::string,std::string> h;
+                    out_resp = make_response_bytes(400, "err", h, bodyv);
+                    return;
+                }
+                std::string data = FileHelper::readAll(safe_path);
                 if (data.empty()) {
                     term << "[https]["<< gamecd <<"] dlc file not found! Send failure... requested: " << path << std::endl;
 
@@ -489,8 +580,15 @@ void RequestHandler::handle_request(const std::string& request_line,
                  term << "[https]["<< gamecd <<"] sending " << contents << "..." << std::endl;
 
                 // return file (ensure file exists at ./dlc/output.bin)
-                std::string basic_string = "./dlc/" + gamecd + "/" + contents;
-                std::ifstream ifs(basic_string, std::ios::binary);
+                std::string safe_path;
+                if (!build_safe_dlc_path(gamecd, contents, safe_path)) {
+                    std::string b = "err";
+                    std::vector<uint8_t> bodyv(b.begin(), b.end());
+                    std::map<std::string,std::string> h;
+                    out_resp = make_response_bytes(400, "err", h, bodyv);
+                    return;
+                }
+                std::ifstream ifs(safe_path, std::ios::binary);
                 std::vector<uint8_t> filev;
                 if (ifs) {
                     filev.assign( (std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>() );
@@ -502,7 +600,7 @@ void RequestHandler::handle_request(const std::string& request_line,
                     out_resp = make_response_bytes(200, "OK", h, filev);
                     return;
                 }
-                term << "[https]["<< gamecd <<"] file not found! Send failure... requested: " << basic_string << std::endl;
+                term << "[https]["<< gamecd <<"] file not found! Send failure... requested: " << safe_path << std::endl;
                 std::string b = "err";
                 std::vector<uint8_t> bodyv(b.begin(), b.end());
                 std::map<std::string,std::string> h;

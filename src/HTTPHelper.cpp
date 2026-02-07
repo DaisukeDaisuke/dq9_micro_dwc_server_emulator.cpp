@@ -66,7 +66,6 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
 
     const char resp[] =
         "HTTP/1.1 200 OK\r\n"
-        "Date: Wed, 04 Feb 2026 13:42:03 GMT\r\n"
         "Server: Nintendo Wii (http) \r\n"
         "Content-type: text/html\r\n"
         "X-Organization: Nintendo\r\n"
@@ -90,6 +89,7 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
         char buf[1024];
         recv(client, buf, (int)sizeof(buf), 0); // 読み捨て
 
+        //bufは\x00がないため、出力禁止
         term << "[http] Received conntest request!" << std::endl;
 
         send(client, resp, (int)(sizeof(resp) - 1), 0);
