@@ -18,4 +18,7 @@ dq9用のexeだけで完結する、dqvcのDLC配布サーバーです。
 https://github.com/DaisukeDaisuke/dq9_micro_dwc_server_emulator.cpp/blob/main/%E8%AA%AC%E6%98%8E%E6%9B%B8.pdf  
 
 ### exe
+> このリンクは最後の更新から、2か月でリンク切れするので、リンク復活が必要であればツイッターで教えてほしいです  
+> https://x.com/Daisuke76897125  
+
 https://nightly.link/DaisukeDaisuke/dq9_micro_dwc_server_emulator.cpp/workflows/windows-msbuild/main/windows-msbuild-with-dummy-certs.zip  
