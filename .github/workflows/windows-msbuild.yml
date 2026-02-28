@@ -50,7 +50,7 @@ jobs:
           rm WII_NWC_1_CERT.p12 keys.txt nwc.key nwc.srl server.csr
 
       - name: Upload dummy-certs artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dummy-certs
           path: dummy-certs
@@ -116,7 +116,7 @@ jobs:
           Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}\Release" -Force
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: windows-msbuild
           path: |
@@ -129,13 +129,13 @@ jobs:
       - build
     steps:
       - name: Download windows build artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: windows-msbuild
           path: merged/windows
 
       - name: Download dummy-certs artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dummy-certs
           path: merged/dummy-certs
@@ -151,7 +151,7 @@ jobs:
           echo "Merge completed"
 
       - name: Upload merged artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: windows-msbuild-with-dummy-certs
           path: merged/windows
