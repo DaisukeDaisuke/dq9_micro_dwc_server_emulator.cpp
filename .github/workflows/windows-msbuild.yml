@@ -6,6 +6,8 @@ on:
       - "main"
   pull_request: {}
   workflow_dispatch: {}
+  schedule:
+  - cron: "36 7 9 * *"
 
 permissions:
   contents: read
