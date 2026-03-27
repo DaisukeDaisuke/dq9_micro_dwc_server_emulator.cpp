@@ -39,13 +39,14 @@ jobs:
           curl -LO "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
           tar -xzf "openssl-${OPENSSL_VERSION}.tar.gz"
           cd "openssl-${OPENSSL_VERSION}"
-          ./Configure linux-x86_64 shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers no-tests no-module --prefix="${OPENSSL_INSTALL}" --openssldir="${OPENSSL_INSTALL}"
+          ./Configure linux-x86_64 shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers no-tests no-module --prefix="${OPENSSL_INSTALL}" --openssldir="${OPENSSL_INSTALL}" -Wl,-rpath,"${OPENSSL_INSTALL}/lib64"
           make -j"$(nproc)"
           make install_sw
 
       - name: Generate dummy-certs
         run: |
           set -eux
+          export LD_LIBRARY_PATH="${OPENSSL_LIB_DIR}:${LD_LIBRARY_PATH:-}"
           rm -rf dummy-certs
           mkdir -p dummy-certs
           cd dummy-certs
