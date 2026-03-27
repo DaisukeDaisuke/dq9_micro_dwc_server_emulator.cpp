@@ -357,9 +357,13 @@ std::string now_datetime() {
     return "20250101120000";
 }
 
-static std::string fixed_response_date_rfc1123() {
+static std::string fixed_response_date_rfc1123(const std::string& gamecd) {
     // 2027-01-01 12:00:00 JST = 2027-01-01 03:00:00 GMT.
-    return "Wed, 31 Dec 2025 12:00:00 GMT";
+    if (gamecd == "YDQJ")
+    {
+        return "Wed, 31 Dec 2025 12:00:00 GMT";
+    }
+    return nowdate::get_current_time_rfc1123();
 }
 
 
@@ -387,12 +391,12 @@ void RequestHandler::handle_request(const std::string& request_line,
     if (host_only == "nas.nintendowifi.net") {
 
         if (request_line.find(" /ac ") != std::string::npos) {
-            auto date = fixed_response_date_rfc1123();
-
             std::string sbody(body.begin(), body.end());
 
             std::string action = extract_and_decode_param(sbody, "action");
             std::string gamecd = extract_and_decode_param(sbody, "gamecd");
+
+            auto date = fixed_response_date_rfc1123(gamecd);
             if (!isValidGameCd(gamecd) || gamecd.empty()) {
                 term << "[https] invalid gamecd! Send failure..." << std::endl;
                 std::string b = "err";
