@@ -31,30 +31,28 @@ jobs:
       - name: Build OpenSSL 1.1.1w
         if: steps.cache-openssl.outputs.cache-hit != 'true'
         run: |
-          set -eux
           curl -LO https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_1_1w.tar.gz
           tar xf OpenSSL_1_1_1w.tar.gz
           cd openssl-OpenSSL_1_1_1w
-          ./config --prefix="${OPENSSL_PREFIX}" no-shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers
-          make -j"$(nproc)"
+          ./config --prefix=${OPENSSL_PREFIX} no-shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers
+          make -j$(nproc)
           make install
+          make install_sw
 
       - name: Generate dummy-certs
         run: |
-          set -eux
-          rm -rf dummy-certs
-          mkdir -p dummy-certs
+          mkdir dummy-certs
           cd dummy-certs
           curl -LO https://larsenv.github.io/NintendoCerts/WII_NWC_1_CERT.p12
-          "${OPENSSL_PREFIX}/bin/openssl" pkcs12 -legacy -in WII_NWC_1_CERT.p12 -passin pass:alpine -passout pass:alpine -out keys.txt
-          sed -n '7,29p' keys.txt > nwc.crt
+          ${OPENSSL_PREFIX}/bin/openssl pkcs12 -in WII_NWC_1_CERT.p12 -passin pass:alpine -passout pass:alpine -out keys.txt
+          sed -n '7,29p'  keys.txt > nwc.crt
           sed -n '33,50p' keys.txt > nwc.key
-          "${OPENSSL_PREFIX}/bin/openssl" genrsa -out server.key 1024
+          ${OPENSSL_PREFIX}/bin/openssl genrsa -out server.key 1024
           printf "US\nWashington\nRedmond\nNintendo of America Inc.\nNintendo Wifi Network\n*.*.*\nca@noa.nintendo.com\n\n\n" | \
-            "${OPENSSL_PREFIX}/bin/openssl" req -new -key server.key -out server.csr
-          "${OPENSSL_PREFIX}/bin/openssl" x509 -req -in server.csr -CA nwc.crt -CAkey nwc.key -CAcreateserial -out server.crt -days 3650 -sha1 -passin pass:alpine
+            ${OPENSSL_PREFIX}/bin/openssl req -new -key server.key -out server.csr
+          ${OPENSSL_PREFIX}/bin/openssl x509 -req -in server.csr -CA nwc.crt -CAkey nwc.key -CAcreateserial -out server.crt -days 3650 -sha1 -passin pass:alpine
           cat server.crt nwc.crt > server_with_chain.crt
-          rm -f WII_NWC_1_CERT.p12 keys.txt nwc.key nwc.srl server.csr
+          rm WII_NWC_1_CERT.p12 keys.txt nwc.key nwc.srl server.csr
 
       - name: Upload dummy-certs artifact
         uses: actions/upload-artifact@v7
