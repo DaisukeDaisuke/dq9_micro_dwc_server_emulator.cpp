@@ -354,12 +354,12 @@ bool build_safe_dlc_path(
 // 現在時刻 YYYYMMDDHHMMSS
 std::string now_datetime() {
     // Fixed to 2027-01-01 12:00:00 JST.
-    return "20270101120000";
+    return "20250101120000";
 }
 
 static std::string fixed_response_date_rfc1123() {
     // 2027-01-01 12:00:00 JST = 2027-01-01 03:00:00 GMT.
-    return "Fri, 01 Jan 2027 03:00:00 GMT";
+    return "Wed, 31 Dec 2025 12:00:00 GMT";
 }
 
 
@@ -405,7 +405,6 @@ void RequestHandler::handle_request(const std::string& request_line,
                 term << "[https]["<< gamecd << "] Processing Login... " << std::endl;
                 std::string b =
                         "returncd=" + base64_encode_replace("001") +
-                        "&date=" + base64_encode_replace(date) +
                         "&retry=" + base64_encode_replace("0") +
                         "&locator=" + base64_encode_replace("gamespy.com") +
                         "&challenge=" + base64_encode_replace("RNR1HLAS") +
@@ -415,6 +414,7 @@ void RequestHandler::handle_request(const std::string& request_line,
 
                 std::map<std::string, std::string> h;
                 h["Content-Length"] = std::to_string(b.size());
+                // term << date << std::endl;
                 h["Date"] = date;
                 std::vector<uint8_t> bodyv(b.begin(), b.end());
                 out_resp = make_response_bytes(200, "OK", h, bodyv);
