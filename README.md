@@ -32,7 +32,8 @@ Replace ip.txt with your computer's IP address.
 mkdir dq9-server
 cd dq9-server
 wget https://nightly.link/DaisukeDaisuke/dq9_micro_dwc_server_emulator.cpp/workflows/linux-native/main/linux-native.zip
-nano ip.txt
 unzip linux-native.zip
+nano ip.txt
 sudo ./dq9-server
 ```
+
