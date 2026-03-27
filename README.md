@@ -22,3 +22,17 @@ https://github.com/DaisukeDaisuke/dq9_micro_dwc_server_emulator.cpp/blob/main/%E
 > https://x.com/Daisuke76897125  
 
 https://nightly.link/DaisukeDaisuke/dq9_micro_dwc_server_emulator.cpp/workflows/windows-msbuild/main/windows-msbuild-with-dummy-certs.zip  
+
+
+# for Linux
+
+Replace ip.txt with your computer's IP address.
+
+```php
+mkdir dq9-server
+cd dq9-server
+curl -LO https://nightly.link/DaisukeDaisuke/dq9_micro_dwc_server_emulator.cpp/workflows/linux-native/main/linux-native.zip
+nano ip.txt
+unzip linux-native.zip
+sudo ./dq9-server
+```

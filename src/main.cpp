@@ -8,11 +8,76 @@
 #include "SSLHelper.h"
 
 #include <csignal>
+#include <chrono>
+
+#ifdef _WIN32
+#include <conio.h>
+#else
+#include <cerrno>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <termios.h>
+#include <unistd.h>
+#endif
 
 #include "nowdate.h"
 #include "terminal.h"
 
 static ServerContext* g_ctx = nullptr;
+
+namespace {
+void stop_server(ServerContext& ctx, terminal& term)
+{
+    if (ctx.stop) {
+        return;
+    }
+
+    term << "[watchdog] stopping..." << std::endl;
+    ctx.stop = true;
+
+    if (ctx.dns_sock   != kInvalidSocket) socket_close(ctx.dns_sock);
+    if (ctx.http_sock  != kInvalidSocket) socket_close(ctx.http_sock);
+    if (ctx.https_sock != kInvalidSocket) socket_close(ctx.https_sock);
+}
+
+#ifndef _WIN32
+class ScopedTerminalMode {
+public:
+    explicit ScopedTerminalMode(int fd) : fd_(fd), active_(false)
+    {
+        if (tcgetattr(fd_, &original_) != 0) {
+            return;
+        }
+
+        termios raw = original_;
+        raw.c_lflag &= static_cast<unsigned>(~(ICANON | ECHO));
+        raw.c_cc[VMIN] = 0;
+        raw.c_cc[VTIME] = 0;
+
+        if (tcsetattr(fd_, TCSANOW, &raw) == 0) {
+            active_ = true;
+        }
+    }
+
+    ~ScopedTerminalMode()
+    {
+        if (active_) {
+            tcsetattr(fd_, TCSANOW, &original_);
+        }
+    }
+
+    ScopedTerminalMode(const ScopedTerminalMode&) = delete;
+    ScopedTerminalMode& operator=(const ScopedTerminalMode&) = delete;
+
+    [[nodiscard]] bool active() const { return active_; }
+
+private:
+    int fd_;
+    bool active_;
+    termios original_{};
+};
+#endif
+}
 
 
 /**
@@ -69,13 +134,7 @@ void on_sigint(int)
 {
     if (g_ctx) {
         terminal term;
-        g_ctx->stop = true;
-
-        term << "[watchdog] stopping..." << std::endl;
-
-        if (g_ctx->dns_sock   != kInvalidSocket) socket_close(g_ctx->dns_sock);
-        if (g_ctx->http_sock  != kInvalidSocket) socket_close(g_ctx->http_sock);
-        if (g_ctx->https_sock != kInvalidSocket) socket_close(g_ctx->https_sock);
+        stop_server(*g_ctx, term);
     }
 }
 
@@ -84,16 +143,58 @@ void wait_for_input(ServerContext& ctx)
     terminal term;
     term << "[watchdog] Pressing any key will be stop" << std::endl;
 
-    std::string line;
-    std::getline(std::cin, line);
+#ifdef _WIN32
+    while (!ctx.stop) {
+        if (_kbhit()) {
+            (void)_getch();
+            stop_server(ctx, term);
+            return;
+        }
 
-    term << "[watchdog] stopping..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+#else
+    const int stdin_fd = fileno(stdin);
+    if (stdin_fd < 0 || !isatty(stdin_fd)) {
+        term << "[watchdog] stdin is not a TTY, keyboard stop disabled" << std::endl;
+        return;
+    }
 
-    ctx.stop = true;
+    if (tcgetpgrp(stdin_fd) != getpgrp()) {
+        term << "[watchdog] process is not in foreground, keyboard stop disabled" << std::endl;
+        return;
+    }
 
-    if (ctx.dns_sock   != kInvalidSocket) socket_close(ctx.dns_sock);
-    if (ctx.http_sock  != kInvalidSocket) socket_close(ctx.http_sock);
-    if (ctx.https_sock != kInvalidSocket) socket_close(ctx.https_sock);
+    ScopedTerminalMode raw_mode(stdin_fd);
+    if (!raw_mode.active()) {
+        term << "[watchdog] failed to switch terminal mode, keyboard stop disabled" << std::endl;
+        return;
+    }
+
+    while (!ctx.stop) {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(stdin_fd, &readfds);
+
+        timeval timeout{};
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 100000;
+
+        const int rc = select(stdin_fd + 1, &readfds, nullptr, nullptr, &timeout);
+        if (rc > 0 && FD_ISSET(stdin_fd, &readfds)) {
+            char ch = '\0';
+            if (read(stdin_fd, &ch, 1) > 0) {
+                stop_server(ctx, term);
+                return;
+            }
+        }
+
+        if (rc < 0 && errno != EINTR) {
+            term << "[watchdog] stdin monitoring failed, keyboard stop disabled" << std::endl;
+            return;
+        }
+    }
+#endif
 }
 
 
