@@ -118,7 +118,9 @@ int main(int argc, char** argv)
     }
 
     g_ctx = &ctx1;
+#ifdef _WIN32
     std::signal(SIGINT, on_sigint);
+#endif
 
     std::thread dns_thread(
         dns::run_dns_server_udp_53,
