@@ -40,6 +40,7 @@ static const size_t SEND_CHUNK = 768; // tuneable: 512..1024 通らないなら1
 static const size_t MAX_BODY_BYTES = 5u * 1024u * 1024u; // 5MB上限
 
 
+static constexpr int CLIENT_IO_TIMEOUT_MS = 30 * 1000;
 static constexpr int MAX_SSL_RETRY = 1000;
 
 bool ssl_write_split(SSL* ssl, const std::vector<uint8_t>& data)
@@ -369,6 +370,12 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
             break;
         }
 
+        if (!socket_set_io_timeout(client, CLIENT_IO_TIMEOUT_MS)) {
+            term << "[https][" << port << "] Failed to set client socket timeout" << std::endl;
+            socket_close(client);
+            continue;
+        }
+
         SSL* ssl = SSL_new(ctx);
         if (!ssl) { socket_close(client); continue; }
         SSL_RAII ssl_raii(ssl);
@@ -389,7 +396,7 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
         bool error = false;
         std::string leftover_body;
         std::string header_block = read_until_double_crlf(ssl, leftover_body, error);
-        if (error || leftover_body.empty()) {
+        if (error || header_block.empty()) {
             SSL_shutdown(ssl);
             socket_close(client);
             continue;
@@ -447,6 +454,14 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
 
                 size_t can_take = std::min((size_t)r, content_len - bodyv.size());
                 bodyv.insert(bodyv.end(), tmp.data(), tmp.data() + can_take);
+            }
+
+            if (bodyv.size() != content_len) {
+                std::cerr << "[https][" << port << "] Incomplete request body: expected "
+                          << content_len << " bytes, received " << bodyv.size() << " bytes" << std::endl;
+                SSL_shutdown(ssl);
+                socket_close(client);
+                continue;
             }
         }
 

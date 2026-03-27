@@ -18,6 +18,8 @@
 #include "ServerContext.h"
 #include "terminal.h"
 
+static constexpr int CLIENT_IO_TIMEOUT_MS = 30 * 1000;
+
 void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
     terminal term;
 
@@ -86,8 +88,18 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
             break;
         }
 
+        if (!socket_set_io_timeout(client, CLIENT_IO_TIMEOUT_MS)) {
+            term << "[http] Failed to set client socket timeout" << std::endl;
+            socket_close(client);
+            continue;
+        }
+
         char buf[1024];
-        recv(client, buf, (int)sizeof(buf), 0); // 読み捨て
+        int r = recv(client, buf, (int)sizeof(buf), 0); // 読み捨て
+        if (r <= 0) {
+            socket_close(client);
+            continue;
+        }
 
         //bufは\x00がないため、出力禁止
         term << "[http] Received conntest request!" << std::endl;
