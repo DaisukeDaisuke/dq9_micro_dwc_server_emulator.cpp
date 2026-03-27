@@ -13,8 +13,58 @@ permissions:
   contents: read
 
 jobs:
+  dummy-certs-linux:
+    runs-on: ubuntu-22.04
+    env:
+      OPENSSL_VERSION: 1.1.1w
+      OPENSSL_PREFIX: ${{ github.workspace }}/openssl-1.1.1w
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore OpenSSL cache
+        id: cache-openssl
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.OPENSSL_PREFIX }}
+          key: openssl-${{ env.OPENSSL_VERSION }}-linux
+
+      - name: Build OpenSSL 1.1.1w
+        if: steps.cache-openssl.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          curl -LO https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_1_1w.tar.gz
+          tar xf OpenSSL_1_1_1w.tar.gz
+          cd openssl-OpenSSL_1_1_1w
+          ./config --prefix="${OPENSSL_PREFIX}" no-shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers
+          make -j"$(nproc)"
+          make install
+
+      - name: Generate dummy-certs
+        run: |
+          set -eux
+          rm -rf dummy-certs
+          mkdir -p dummy-certs
+          cd dummy-certs
+          curl -LO https://larsenv.github.io/NintendoCerts/WII_NWC_1_CERT.p12
+          "${OPENSSL_PREFIX}/bin/openssl" pkcs12 -legacy -in WII_NWC_1_CERT.p12 -passin pass:alpine -passout pass:alpine -out keys.txt
+          sed -n '7,29p' keys.txt > nwc.crt
+          sed -n '33,50p' keys.txt > nwc.key
+          "${OPENSSL_PREFIX}/bin/openssl" genrsa -out server.key 1024
+          printf "US\nWashington\nRedmond\nNintendo of America Inc.\nNintendo Wifi Network\n*.*.*\nca@noa.nintendo.com\n\n\n" | \
+            "${OPENSSL_PREFIX}/bin/openssl" req -new -key server.key -out server.csr
+          "${OPENSSL_PREFIX}/bin/openssl" x509 -req -in server.csr -CA nwc.crt -CAkey nwc.key -CAcreateserial -out server.crt -days 3650 -sha1 -passin pass:alpine
+          cat server.crt nwc.crt > server_with_chain.crt
+          rm -f WII_NWC_1_CERT.p12 keys.txt nwc.key nwc.srl server.csr
+
+      - name: Upload dummy-certs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dummy-certs
+          path: dummy-certs
+
   build:
     runs-on: ubuntu-22.04
+    needs: dummy-certs-linux
     env:
       BUILD_DIR: cmake-build-linux-release
       ARTIFACT_DIR: dist/linux-native
@@ -39,26 +89,15 @@ jobs:
           curl -LO "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
           tar -xzf "openssl-${OPENSSL_VERSION}.tar.gz"
           cd "openssl-${OPENSSL_VERSION}"
-          ./Configure linux-x86_64 shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers no-tests no-module --prefix="${OPENSSL_INSTALL}" --openssldir="${OPENSSL_INSTALL}" -Wl,-rpath,"${OPENSSL_INSTALL}/lib64"
+          ./Configure linux-x86_64 shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers no-tests no-module --prefix="${OPENSSL_INSTALL}" --openssldir="${OPENSSL_INSTALL}"
           make -j"$(nproc)"
           make install_sw
 
-      - name: Generate dummy-certs
-        run: |
-          set -eux
-          export LD_LIBRARY_PATH="${OPENSSL_LIB_DIR}:${LD_LIBRARY_PATH:-}"
-          rm -rf dummy-certs
-          mkdir -p dummy-certs
-          cd dummy-certs
-          curl -LO https://larsenv.github.io/NintendoCerts/WII_NWC_1_CERT.p12
-          "${OPENSSL_INSTALL}/bin/openssl" pkcs12 -in WII_NWC_1_CERT.p12 -passin pass:alpine -passout pass:alpine -out keys.txt
-          sed -n '7,29p' keys.txt > nwc.crt
-          sed -n '33,50p' keys.txt > nwc.key
-          "${OPENSSL_INSTALL}/bin/openssl" genrsa -out server.key 1024
-          printf "US\nWashington\nRedmond\nNintendo of America Inc.\nNintendo Wifi Network\n*.*.*\nca@noa.nintendo.com\n\n\n" | "${OPENSSL_INSTALL}/bin/openssl" req -new -key server.key -out server.csr
-          "${OPENSSL_INSTALL}/bin/openssl" x509 -req -in server.csr -CA nwc.crt -CAkey nwc.key -CAcreateserial -out server.crt -days 3650 -sha1 -passin pass:alpine
-          cat server.crt nwc.crt > server_with_chain.crt
-          rm -f WII_NWC_1_CERT.p12 keys.txt nwc.key nwc.srl server.csr
+      - name: Download dummy-certs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dummy-certs
+          path: dummy-certs
 
       - name: Configure CMake
         run: |
