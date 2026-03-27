@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   dummy-certs-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     env:
       OPENSSL_VERSION: 1.1.1w
       OPENSSL_PREFIX: ${{ github.workspace }}/openssl-1.1.1w
