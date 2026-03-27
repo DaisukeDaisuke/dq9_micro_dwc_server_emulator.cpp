@@ -103,7 +103,7 @@ int main(int argc, char** argv)
 
     std::cout << "Now: " << nowdate << std::endl;
 
-    const char* ipconfg = R"(.\ip.txt)";
+    const char* ipconfg = "./ip.txt";
 
     ServerContext ctx1;
 

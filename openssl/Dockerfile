@@ -24,7 +24,7 @@ RUN sed -i.bak -r 's@http://(jp\.)?archive\.ubuntu\.com/ubuntu/?@https://ftp.udx
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
-    apt-get update && apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl xz-utils \
     perl make \
     gcc g++ \

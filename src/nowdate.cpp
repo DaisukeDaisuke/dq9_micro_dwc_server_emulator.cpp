@@ -5,7 +5,9 @@
 #include "nowdate.h"
 
 #include <chrono>
-#include <format>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 #include <string>
 
 std::string nowdate::get_current_time_rfc1123() {
@@ -29,12 +31,14 @@ std::string nowdate::get_current_time_rfc1123() {
     static const char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
-    return std::format("{}, {:02d} {} {:04d} {:02d}:{:02d}:{:02d} GMT",
-                       weekdays[tm_utc.tm_wday],
-                       tm_utc.tm_mday,
-                       months[tm_utc.tm_mon],
-                       tm_utc.tm_year + 1900,
-                       tm_utc.tm_hour,
-                       tm_utc.tm_min,
-                       tm_utc.tm_sec);
+    std::ostringstream oss;
+    oss << weekdays[tm_utc.tm_wday] << ", "
+        << std::setfill('0') << std::setw(2) << tm_utc.tm_mday << ' '
+        << months[tm_utc.tm_mon] << ' '
+        << (tm_utc.tm_year + 1900) << ' '
+        << std::setw(2) << tm_utc.tm_hour << ':'
+        << std::setw(2) << tm_utc.tm_min << ':'
+        << std::setw(2) << tm_utc.tm_sec
+        << " GMT";
+    return oss.str();
 }

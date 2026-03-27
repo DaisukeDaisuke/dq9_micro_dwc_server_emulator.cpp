@@ -1,0 +1,92 @@
+name: linux-native
+
+on:
+  schedule:
+    - cron: "58 7 9 * *"
+  push:
+    branches:
+      - "main"
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      BUILD_DIR: cmake-build-linux-release
+      ARTIFACT_DIR: dist/linux-native
+      OPENSSL_VERSION: 3.0.19
+      OPENSSL_INSTALL: ${{ github.workspace }}/openssl/linux-install
+      OPENSSL_LIB_DIR: ${{ github.workspace }}/openssl/linux-install/lib64
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore OpenSSL cache
+        id: cache-openssl
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.OPENSSL_INSTALL }}
+          key: openssl-${{ env.OPENSSL_VERSION }}-linux-ubuntu-22.04-shared
+
+      - name: Build OpenSSL (shared)
+        if: steps.cache-openssl.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          cd "${{ github.workspace }}"
+          curl -LO "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
+          tar -xzf "openssl-${OPENSSL_VERSION}.tar.gz"
+          cd "openssl-${OPENSSL_VERSION}"
+          ./Configure linux-x86_64 shared enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers no-tests no-module --prefix="${OPENSSL_INSTALL}" --openssldir="${OPENSSL_INSTALL}"
+          make -j"$(nproc)"
+          make install_sw
+
+      - name: Generate dummy-certs
+        run: |
+          set -eux
+          rm -rf dummy-certs
+          mkdir -p dummy-certs
+          cd dummy-certs
+          curl -LO https://larsenv.github.io/NintendoCerts/WII_NWC_1_CERT.p12
+          "${OPENSSL_INSTALL}/bin/openssl" pkcs12 -in WII_NWC_1_CERT.p12 -passin pass:alpine -passout pass:alpine -out keys.txt
+          sed -n '7,29p' keys.txt > nwc.crt
+          sed -n '33,50p' keys.txt > nwc.key
+          "${OPENSSL_INSTALL}/bin/openssl" genrsa -out server.key 1024
+          printf "US\nWashington\nRedmond\nNintendo of America Inc.\nNintendo Wifi Network\n*.*.*\nca@noa.nintendo.com\n\n\n" | "${OPENSSL_INSTALL}/bin/openssl" req -new -key server.key -out server.csr
+          "${OPENSSL_INSTALL}/bin/openssl" x509 -req -in server.csr -CA nwc.crt -CAkey nwc.key -CAcreateserial -out server.crt -days 3650 -sha1 -passin pass:alpine
+          cat server.crt nwc.crt > server_with_chain.crt
+          rm -f WII_NWC_1_CERT.p12 keys.txt nwc.key nwc.srl server.csr
+
+      - name: Configure CMake
+        run: |
+          set -eux
+          cmake -S . -B "${BUILD_DIR}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSSL_ROOT_DIR="${OPENSSL_INSTALL}" \
+            -DOPENSSL_INCLUDE_DIR="${OPENSSL_INSTALL}/include" \
+            -DOPENSSL_SSL_LIBRARY="${OPENSSL_LIB_DIR}/libssl.so" \
+            -DOPENSSL_CRYPTO_LIBRARY="${OPENSSL_LIB_DIR}/libcrypto.so"
+
+      - name: Build
+        run: |
+          set -eux
+          cmake --build "${BUILD_DIR}" --config Release --target dq9-server -j"$(nproc)"
+
+      - name: Stage artifact
+        run: |
+          set -eux
+          rm -rf "${ARTIFACT_DIR}"
+          mkdir -p "${ARTIFACT_DIR}/dummy-certs"
+          cp "${BUILD_DIR}/dq9-server" "${ARTIFACT_DIR}/"
+          cp "${OPENSSL_LIB_DIR}/libssl.so.3" "${ARTIFACT_DIR}/"
+          cp "${OPENSSL_LIB_DIR}/libcrypto.so.3" "${ARTIFACT_DIR}/"
+          cp ip.txt "${ARTIFACT_DIR}/"
+          cp -r dummy-certs/. "${ARTIFACT_DIR}/dummy-certs/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-native
+          path: ${{ env.ARTIFACT_DIR }}

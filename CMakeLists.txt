@@ -19,7 +19,6 @@ add_executable(dq9-server src/main.cpp
         src/RequestHandler.cpp
         src/RequestHandler.h
         src/terminal.h
-        src/safety.cpp
         src/Safety.cpp
         src/Safety.h
         src/nowdate.cpp
@@ -63,7 +62,19 @@ if (WIN32)
 endif()
 
 find_package(Threads REQUIRED)
+set(OPENSSL_USE_STATIC_LIBS FALSE)
 find_package(OpenSSL REQUIRED)
 
-target_include_directories(dq9-server PRIVATE ${OPENSSL_INCLUDE_DIR})
-target_link_libraries(dq9-server PRIVATE ${OPENSSL_LIBRARIES} Threads::Threads)
+if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto)
+    target_link_libraries(dq9-server PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+else()
+    target_include_directories(dq9-server PRIVATE ${OPENSSL_INCLUDE_DIR})
+    target_link_libraries(dq9-server PRIVATE ${OPENSSL_LIBRARIES} Threads::Threads)
+endif()
+
+if(UNIX AND NOT APPLE)
+    set_target_properties(dq9-server PROPERTIES
+        BUILD_RPATH "$ORIGIN"
+        INSTALL_RPATH "$ORIGIN"
+    )
+endif()

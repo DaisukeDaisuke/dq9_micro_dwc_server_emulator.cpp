@@ -353,19 +353,13 @@ bool build_safe_dlc_path(
 
 // 現在時刻 YYYYMMDDHHMMSS
 std::string now_datetime() {
+    // Fixed to 2027-01-01 12:00:00 JST.
+    return "20270101120000";
+}
 
-    auto now = std::chrono::system_clock::now();
-    std::time_t tt = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-#ifdef _WIN32
-    localtime_s(&tm, &tt);
-#else
-    localtime_r(&tt, &tm);
-#endif
-
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y%m%d%H%M%S");
-    return oss.str();
+static std::string fixed_response_date_rfc1123() {
+    // 2027-01-01 12:00:00 JST = 2027-01-01 03:00:00 GMT.
+    return "Fri, 01 Jan 2027 03:00:00 GMT";
 }
 
 
@@ -393,7 +387,7 @@ void RequestHandler::handle_request(const std::string& request_line,
     if (host_only == "nas.nintendowifi.net") {
 
         if (request_line.find(" /ac ") != std::string::npos) {
-            auto date = nowdate::get_current_time_rfc1123();
+            auto date = fixed_response_date_rfc1123();
 
             std::string sbody(body.begin(), body.end());
 

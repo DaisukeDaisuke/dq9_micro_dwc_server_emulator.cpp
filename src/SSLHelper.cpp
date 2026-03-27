@@ -245,15 +245,9 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
     terminal term;
     
     sockets_init_once();
-#ifdef _WIN32
-    const char* cert_file = R"(.\dummy-certs\server.crt)";
-    const char* key_file = R"(.\dummy-certs\server.key)";
-    const char* cert_nwc_file = R"(.\dummy-certs\nwc.crt)";
-#else
-    const char* cert_file = "/etc/ssl/certs/server.crt";
-    const char* key_file = "/etc/ssl/private/server.key";
-    const char* cert_nwc_file = "/etc/ssl/certs/nwc.crt";
-#endif
+    const char* cert_file = "./dummy-certs/server.crt";
+    const char* key_file = "./dummy-certs/server.key";
+    const char* cert_nwc_file = "./dummy-certs/nwc.crt";
 
      term << "[https][" << port << "] Starting server on port " << port << std::endl;
 
