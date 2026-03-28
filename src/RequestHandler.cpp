@@ -18,10 +18,6 @@ thread_local static bool table_initialized = false;
 thread_local static int8_t decode_table[256];
 
 bool base64_decode_star_as_pad(const std::string& input, std::string& output) {
-    static const int8_t table[256] = {
-        -1
-    };
-
     if (!table_initialized) {
         for (int i = 0; i < 256; ++i) decode_table[i] = -1;
         for (char c = 'A'; c <= 'Z'; ++c) decode_table[static_cast<uint8_t>(c)] = c - 'A';
@@ -361,7 +357,8 @@ static std::string fixed_response_date_rfc1123(const std::string& gamecd) {
     // 2027-01-01 12:00:00 JST = 2027-01-01 03:00:00 GMT.
     if (gamecd == "YDQJ")
     {
-        return "Wed, 31 Dec 2025 12:00:00 GMT";
+        //return "Wed, 31 Dec 2025 12:00:00 GMT";
+        return "Sat, 31 Dec 2050 12:00:00 GMT";
     }
     return nowdate::get_current_time_rfc1123();
 }
