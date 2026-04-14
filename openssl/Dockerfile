@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-ARG OPENSSL_TAG="openssl-3.0.19"
-ARG OPENSSL_DIR="openssl-3.0.19"
+ARG OPENSSL_TAG="openssl-3.0.20"
+ARG OPENSSL_DIR="openssl-3.0.20"
 
 # ===== build stage =====
 FROM ubuntu:24.04 AS build

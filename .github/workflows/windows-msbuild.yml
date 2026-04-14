@@ -66,7 +66,7 @@ jobs:
         shell: powershell
     env:
       BUILD_DIR: cmake-build-Release
-      OPENSSL_VERSION: 3.0.19
+      OPENSSL_VERSION: 3.0.20
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
     steps:
