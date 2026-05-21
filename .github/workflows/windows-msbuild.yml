@@ -110,22 +110,22 @@ jobs:
 
       - name: Configure CMake
         run: |
-          cmake -S . -B "${{ env.BUILD_DIR }}" -G "Visual Studio 17 2022" -A x64 -DOPENSSL_ROOT_DIR="${{ env.OPENSSL_INSTALL }}"
+          cmake -S . -B "${{ env.BUILD_DIR }}" -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="${{ env.OPENSSL_INSTALL }}"
 
       - name: Build
-        run: cmake --build "${{ env.BUILD_DIR }}" --config Release --target dq9-server
+        run: cmake --build "${{ env.BUILD_DIR }}" --target dq9-server
 
       - name: Copy OpenSSL DLLs
         run: |
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}\Release" -Force
-          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}\Release" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
+          Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: windows-msbuild
           path: |
-            ${{ env.BUILD_DIR }}\Release
+            ${{ env.BUILD_DIR }}
 
   merge-artifacts-linux:
     runs-on: ubuntu-latest
