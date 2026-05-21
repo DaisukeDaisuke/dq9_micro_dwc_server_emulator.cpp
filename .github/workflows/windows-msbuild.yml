@@ -66,6 +66,7 @@ jobs:
         shell: powershell
     env:
       BUILD_DIR: cmake-build-Release
+      PACKAGE_DIR: windows-msbuild
       OPENSSL_VERSION: 3.0.20
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
@@ -79,7 +80,7 @@ jobs:
           path: ${{ env.OPENSSL_INSTALL }}
           key: openssl-${{ env.OPENSSL_VERSION }}-windows-msvc
 
-      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@9903b5ddb96b67d8ff27924e76011983224cfee5
         with:
           arch: x64
 
@@ -120,12 +121,20 @@ jobs:
           Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libcrypto-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
           Copy-Item "${{ env.OPENSSL_INSTALL }}\\bin\\libssl-3-x64.dll" "${{ env.BUILD_DIR }}" -Force
 
+      - name: Stage artifact files
+        run: |
+          New-Item -ItemType Directory -Force "${{ env.PACKAGE_DIR }}" | Out-Null
+          Copy-Item "${{ env.BUILD_DIR }}\\dq9-server.exe" "${{ env.PACKAGE_DIR }}" -Force
+          Copy-Item "${{ env.BUILD_DIR }}\\dq9-server.pdb" "${{ env.PACKAGE_DIR }}" -Force
+          Copy-Item "${{ env.BUILD_DIR }}\\libcrypto-3-x64.dll" "${{ env.PACKAGE_DIR }}" -Force
+          Copy-Item "${{ env.BUILD_DIR }}\\libssl-3-x64.dll" "${{ env.PACKAGE_DIR }}" -Force
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: windows-msbuild
           path: |
-            ${{ env.BUILD_DIR }}
+            ${{ env.PACKAGE_DIR }}
 
   merge-artifacts-linux:
     runs-on: ubuntu-latest
