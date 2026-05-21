@@ -12,7 +12,7 @@ struct ServerContext;
 
 static bool ends_with_domain_ci(const std::string& name, const std::string& suffix) {
     auto lower = [](std::string s){
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
         return s;
     };
     std::string n = lower(name);
@@ -21,6 +21,28 @@ static bool ends_with_domain_ci(const std::string& name, const std::string& suff
     if (n.size() <= s.size()) return false;
     if (n.compare(n.size() - s.size(), s.size(), s) != 0) return false;
     return n[n.size() - s.size() - 1] == '.';
+}
+
+static std::string dns_peer_to_string(const sockaddr_in& peer) {
+    char addr[INET_ADDRSTRLEN]{};
+    const char* p = inet_ntop(AF_INET, &peer.sin_addr, addr, sizeof(addr));
+    if (!p) {
+        return "unknown";
+    }
+    return std::string(addr) + ":" + std::to_string(ntohs(peer.sin_port));
+}
+
+static std::string sanitize_dns_log_text(const std::string& s) {
+    std::string out;
+    out.reserve(std::min<std::size_t>(s.size(), 120));
+    for (unsigned char c : s) {
+        if (out.size() >= 120) {
+            out += "...";
+            break;
+        }
+        out.push_back((c >= 0x20 && c <= 0x7E) ? static_cast<char>(c) : '?');
+    }
+    return out;
 }
 
 static bool dns_read_u16(const std::vector<uint8_t>& msg, size_t& off, uint16_t& out) {
@@ -95,6 +117,7 @@ static std::vector<uint8_t> build_dns_response_a(
     uint16_t id = (uint16_t)((req[0] << 8) | req[1]);
     uint16_t flags = (uint16_t)((req[2] << 8) | req[3]);
     uint16_t qd = (uint16_t)((req[4] << 8) | req[5]);
+    if (qd != 1) return {};
 
     // RDをコピー、QR=1、RA=1。非該当はNXDOMAINにする
     uint16_t rd = (flags & 0x0100);
@@ -193,6 +216,43 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
 
     term << ("[dns] DNS (UDP) listening on :53, spoof *." + suffix + " -> " + spoof_ip_v4) << std::endl;
 
+    auto drop_window_start = std::chrono::steady_clock::now();
+    size_t ignored_drop_count = 0;
+    size_t malformed_drop_count = 0;
+    bool logged_first_drop = false;
+
+    auto log_drop = [&](bool malformed, const sockaddr_in& peer, const std::string& qname) {
+        if (malformed) {
+            ++malformed_drop_count;
+        } else {
+            ++ignored_drop_count;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (!logged_first_drop) {
+            logged_first_drop = true;
+            drop_window_start = now;
+            term << "[dns] dropping "
+                 << (malformed ? "malformed" : "non-target")
+                 << " query from " << dns_peer_to_string(peer);
+            if (!qname.empty()) {
+                term << " qname=" << sanitize_dns_log_text(qname);
+            }
+            term << std::endl;
+            return;
+        }
+
+        if (now - drop_window_start >= std::chrono::seconds(60)) {
+            term << "[dns] dropped queries in last 60s: non-target="
+                 << ignored_drop_count
+                 << ", malformed=" << malformed_drop_count
+                 << std::endl;
+            ignored_drop_count = 0;
+            malformed_drop_count = 0;
+            drop_window_start = now;
+        }
+    };
+
     while (true) {
         uint8_t buf[512];
         sockaddr_in peer{};
@@ -215,12 +275,15 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
 
         // パースして「最初の質問のQNAME」が suffix にマッチするかだけ判定
         bool match = false;
+        bool parsed_question = false;
+        std::string qname;
         if (req.size() >= 12) {
+            const auto qd = (uint16_t)((req[4] << 8) | req[5]);
             size_t off = 12;
-            std::string qname;
-            if (dns_read_name(req, off, qname)) {
+            if (qd == 1 && dns_read_name(req, off, qname)) {
                 uint16_t qtype = 0, qclass = 0;
                 if (dns_read_u16(req, off, qtype) && dns_read_u16(req, off, qclass)) {
+                    parsed_question = true;
                     // A(1) の IN(1) だけ返す（他はNXDOMAIN扱いでもOKだが、まずはシンプルに）
                     if (qtype == 1 && qclass == 1 && ends_with_domain_ci(qname, suffix)) {
                         match = true;
@@ -231,6 +294,7 @@ void dns::run_dns_server_udp_53(ServerContext& ctx,const std::string& spoof_ip_v
 
         if (!match) {
             // 無応答
+            log_drop(!parsed_question, peer, qname);
             continue;
         }
 

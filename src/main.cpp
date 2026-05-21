@@ -43,6 +43,8 @@ std::string ltrim(const std::string &s) {
     return (start == std::string::npos) ? "" : s.substr(start);
 }
 
+std::string trim(const std::string &s);
+
 /**
  * 文字列の末尾から空白文字を除去します。
  * 空白文字として認識されるのは、スペース、タブ、改行、復帰、改ページ、
@@ -67,7 +69,7 @@ std::string rtrim(const std::string &s) {
 std::string trim(const char *s) {
     if (s == nullptr) return "";
     std::string str(s);
-    return trim(str.c_str());
+    return trim(str);
 }
 
 /**

@@ -9,6 +9,7 @@
 #include <cctype>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 #include "FileHelper.h"
@@ -18,6 +19,12 @@
 
 thread_local static bool table_initialized = false;
 thread_local static int8_t decode_table[256];
+
+static constexpr std::size_t MAX_ENCODED_PARAM_BYTES = 128 * 1024;
+static constexpr std::size_t MAX_DECODED_PARAM_BYTES = 64 * 1024;
+static constexpr std::size_t MAX_PR_WORDS = 4096;
+static constexpr std::size_t MAX_DLC_LIST_BYTES = 1024 * 1024;
+static constexpr std::size_t MAX_DLC_CONTENT_BYTES = 16 * 1024 * 1024;
 
 bool base64_decode_star_as_pad(const std::string& input, std::string& output) {
     if (!table_initialized) {
@@ -228,35 +235,43 @@ std::string extract_and_decode_param(
     const std::string& sbody,
     const std::string& key_name
 ) {
-    const std::string key = key_name + "=";
+    std::string encoded;
+    for (size_t start = 0; start <= sbody.size();) {
+        const size_t end = sbody.find('&', start);
+        const size_t limit = (end == std::string::npos) ? sbody.size() : end;
+        const size_t eq = sbody.find('=', start);
 
-    auto pos = sbody.find(key);
-    if (pos == std::string::npos) {
-        return {};
+        if (eq != std::string::npos && eq < limit &&
+            eq - start == key_name.size() &&
+            sbody.compare(start, key_name.size(), key_name) == 0) {
+            encoded = sbody.substr(eq + 1, limit - eq - 1);
+            break;
+        }
+
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
     }
 
-    auto start = pos + key.size();
-    auto end = sbody.find('&', start);
-
-    std::string encoded = sbody.substr(
-        start,
-        end == std::string::npos ? std::string::npos : end - start
-    );
-
-    if (encoded.empty()) {
+    if (encoded.empty() || encoded.size() > MAX_ENCODED_PARAM_BYTES) {
         return {};
     }
 
     // %2a / %2A を * に置換（Base64デコード前処理）
     {
         encoded = url_decode(encoded);
-        if (Safety::contains_ctl_or_nul(encoded)) {
+        if (encoded.size() > MAX_ENCODED_PARAM_BYTES ||
+            Safety::contains_ctl_or_nul(encoded)) {
             return {};
         }
     }
 
     std::string decoded;
     if (!base64_decode_star_as_pad(encoded, decoded)) {
+        return {};
+    }
+    if (decoded.size() > MAX_DECODED_PARAM_BYTES) {
         return {};
     }
 
@@ -332,6 +347,56 @@ size_t count_words_tab(const std::string& s) {
         if (c == '\t') ++count;
     }
     return count;
+}
+
+enum class FileReadStatus {
+    Ok,
+    NotFound,
+    TooLarge,
+    Error
+};
+
+static FileReadStatus read_file_limited(
+    const std::string& path,
+    std::size_t max_bytes,
+    std::vector<uint8_t>& out)
+{
+    std::ifstream ifs(path, std::ios::binary | std::ios::ate);
+    if (!ifs) {
+        return FileReadStatus::NotFound;
+    }
+
+    const std::streamoff file_size = ifs.tellg();
+    if (file_size < 0) {
+        return FileReadStatus::Error;
+    }
+    if (static_cast<unsigned long long>(file_size) > max_bytes) {
+        return FileReadStatus::TooLarge;
+    }
+    ifs.seekg(0, std::ios::beg);
+
+    out.resize(static_cast<std::size_t>(file_size));
+    if (!out.empty() &&
+        !ifs.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(out.size()))) {
+        out.clear();
+        return FileReadStatus::Error;
+    }
+
+    return FileReadStatus::Ok;
+}
+
+static FileReadStatus read_text_file_limited(
+    const std::string& path,
+    std::size_t max_bytes,
+    std::string& out)
+{
+    std::vector<uint8_t> data;
+    const FileReadStatus status = read_file_limited(path, max_bytes, data);
+    if (status != FileReadStatus::Ok) {
+        return status;
+    }
+    out.assign(data.begin(), data.end());
+    return FileReadStatus::Ok;
 }
 
 bool build_safe_dlc_path(
@@ -473,6 +538,13 @@ void RequestHandler::handle_request(const std::string& request_line,
             std::string words1 = extract_and_decode_param(sbody, "words");
 
             size_t words = count_words_tab(words1);
+            if (words > MAX_PR_WORDS) {
+                std::string b = "err";
+                std::vector<uint8_t> bodyv(b.begin(), b.end());
+                std::map<std::string,std::string> h;
+                out_resp = make_response_bytes(400, "err", h, bodyv);
+                return;
+            }
             std::string wordsret(words, '0');
 
             std::string b;
@@ -522,13 +594,19 @@ void RequestHandler::handle_request(const std::string& request_line,
                     return;
                 }
 
-                std::string data = FileHelper::readAll(safe_path);
-                if (data.empty()) {
+                std::string data;
+                const FileReadStatus read_status =
+                    read_text_file_limited(safe_path, MAX_DLC_LIST_BYTES, data);
+                if (read_status != FileReadStatus::Ok || data.empty()) {
                     term << "[https]["<< gamecd <<"] dlc file not found! Send failure... requested: " << path << std::endl;
                     std::string b = "err";
                     std::vector<uint8_t> bodyv(b.begin(), b.end());
                     std::map<std::string,std::string> h;
-                    out_resp = make_response_bytes(500, "err", h, bodyv);
+                    out_resp = make_response_bytes(
+                        read_status == FileReadStatus::TooLarge ? 413 : 500,
+                        "err",
+                        h,
+                        bodyv);
                     return;
                 }
 
@@ -556,14 +634,20 @@ void RequestHandler::handle_request(const std::string& request_line,
                     out_resp = make_response_bytes(400, "err", h, bodyv);
                     return;
                 }
-                std::string data = FileHelper::readAll(safe_path);
-                if (data.empty()) {
+                std::string data;
+                const FileReadStatus read_status =
+                    read_text_file_limited(safe_path, MAX_DLC_LIST_BYTES, data);
+                if (read_status != FileReadStatus::Ok || data.empty()) {
                     term << "[https]["<< gamecd <<"] dlc file not found! Send failure... requested: " << path << std::endl;
 
                     std::string b = "err";
                     std::vector<uint8_t> bodyv(b.begin(), b.end());
                     std::map<std::string,std::string> h;
-                    out_resp = make_response_bytes(500, "err", h, bodyv);
+                    out_resp = make_response_bytes(
+                        read_status == FileReadStatus::TooLarge ? 413 : 500,
+                        "err",
+                        h,
+                        bodyv);
                     return;
                 }
 
@@ -600,16 +684,23 @@ void RequestHandler::handle_request(const std::string& request_line,
                     out_resp = make_response_bytes(400, "err", h, bodyv);
                     return;
                 }
-                std::ifstream ifs(safe_path, std::ios::binary);
                 std::vector<uint8_t> filev;
-                if (ifs) {
-                    filev.assign( (std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>() );
+                const FileReadStatus read_status =
+                    read_file_limited(safe_path, MAX_DLC_CONTENT_BYTES, filev);
+                if (read_status == FileReadStatus::Ok) {
                     std::map<std::string,std::string> h;
                     h["Content-type"] = "application/x-dsdl";
                     h["Content-Length"] = std::to_string(filev.size());
                     h["X-DLS-Host"] = "http://127.0.0.1/";
                     h["Content-Disposition"] = "attachment; filename=\"" + contents + "\"";
                     out_resp = make_response_bytes(200, "OK", h, filev);
+                    return;
+                }
+                if (read_status == FileReadStatus::TooLarge) {
+                    std::string b = "err";
+                    std::vector<uint8_t> bodyv(b.begin(), b.end());
+                    std::map<std::string,std::string> h;
+                    out_resp = make_response_bytes(413, "err", h, bodyv);
                     return;
                 }
                 term << "[https]["<< gamecd <<"] file not found! Send failure... requested: " << safe_path << std::endl;

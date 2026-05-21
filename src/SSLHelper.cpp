@@ -135,6 +135,37 @@ std::string read_until_double_crlf(
 static constexpr size_t MAX_HEADER_LINE   = 8 * 1024;
 static constexpr size_t MAX_HEADER_COUNT  = 200;
 
+static bool parse_content_length_value(const std::string& value, size_t& out)
+{
+    size_t begin = 0;
+    size_t end = value.size();
+    while (begin < end && std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    if (begin == end) {
+        return false;
+    }
+
+    size_t parsed = 0;
+    for (size_t i = begin; i < end; ++i) {
+        const unsigned char c = static_cast<unsigned char>(value[i]);
+        if (!std::isdigit(c)) {
+            return false;
+        }
+        const size_t digit = c - '0';
+        if (parsed > (std::numeric_limits<size_t>::max() - digit) / 10) {
+            return false;
+        }
+        parsed = parsed * 10 + digit;
+    }
+
+    out = parsed;
+    return true;
+}
+
 std::map<std::string,std::string>
 parse_headers(const std::string& header_block,
               std::string& request_line,
@@ -172,7 +203,7 @@ parse_headers(const std::string& header_block,
             }
 
         if (first) {
-            if (line.empty()) {
+            if (line.empty() || Safety::contains_ctl_or_nul(line)) {
                 error = true;
                 return {};
             }
@@ -204,13 +235,24 @@ parse_headers(const std::string& header_block,
 
         while (!v.empty() && isspace((unsigned char)v.front()))
             v.erase(v.begin());
+        while (!v.empty() && isspace((unsigned char)v.back()))
+            v.pop_back();
 
-        if (k.empty()) {
+        if (k.empty() ||
+            Safety::contains_ctl_or_nul(k) ||
+            Safety::contains_ctl_or_nul(v)) {
             error = true;
             return {};
         }
 
-        std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+        std::transform(k.begin(), k.end(), k.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        if ((k == "content-length" || k == "host") &&
+            headers.find(k) != headers.end()) {
+            error = true;
+            return {};
+        }
 
         headers[k] = v;
     }
@@ -418,24 +460,14 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
         std::vector<uint8_t> bodyv;
 
         if (it != headers.end()) {
-            try {
-                unsigned long long v = std::stoull(it->second);
-                if (v > static_cast<unsigned long long>(MAX_BODY_BYTES)) {
-                    std::cerr << "[https][" << port << "] Body too large: " << v << " bytes" << std::endl;
-                    SSL_shutdown(ssl);
-                    socket_close(client);
-                    continue;
-                }
-                if (v > std::numeric_limits<size_t>::max()) {
-                    std::cerr << "[https][" << port << "] Content-Length out of range\n";
-                    SSL_shutdown(ssl);
-                    socket_close(client);
-                    continue;
-                }
-                content_len = (size_t)v;
-            } catch (...) {
+            if (!parse_content_length_value(it->second, content_len)) {
                 std::cerr << "[https][" << port << "] Invalid Content-Length" << std::endl;
-                content_len = 0;
+                SSL_shutdown(ssl);
+                socket_close(client);
+                continue;
+            }
+            if (content_len > MAX_BODY_BYTES) {
+                std::cerr << "[https][" << port << "] Body too large: " << content_len << " bytes" << std::endl;
                 SSL_shutdown(ssl);
                 socket_close(client);
                 continue;
