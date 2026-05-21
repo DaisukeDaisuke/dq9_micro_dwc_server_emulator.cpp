@@ -65,8 +65,8 @@ jobs:
       run:
         shell: powershell
     env:
-      BUILD_DIR: ${{ runner.temp }}\cmake-build-Release
-      PACKAGE_DIR: ${{ runner.temp }}\windows-msbuild
+      BUILD_DIR: cmake-build-Release
+      PACKAGE_DIR: windows-msbuild
       OPENSSL_VERSION: 3.0.20
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
