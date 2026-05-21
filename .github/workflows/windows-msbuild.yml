@@ -65,8 +65,8 @@ jobs:
       run:
         shell: powershell
     env:
-      BUILD_DIR: cmake-build-Release
-      PACKAGE_DIR: windows-msbuild
+      BUILD_DIR: ${{ runner.temp }}\cmake-build-Release
+      PACKAGE_DIR: ${{ runner.temp }}\windows-msbuild
       OPENSSL_VERSION: 3.0.20
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
@@ -135,6 +135,12 @@ jobs:
           name: windows-msbuild
           path: |
             ${{ env.PACKAGE_DIR }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-devkit
+          path: |
+            ${{ env.OPENSSL_INSTALL }}
 
   merge-artifacts-linux:
     runs-on: ubuntu-latest
