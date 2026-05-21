@@ -5,6 +5,8 @@
 #include "RequestHandler.h"
 
 #include <chrono>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -105,11 +107,14 @@ bool is_valid_path(const std::string& path) {
     if (Safety::contains_ctl_or_nul(path)) {
         return false;
     }
-    if (path.empty() || path.size() > 255) return false;
+    if (path.empty() || path.size() > 128) return false;
     for (unsigned char c : path) {
         if (std::iscntrl(c)) return false;
         if (c == '"' || c == '\'' || c == ';' || c == '/' || c == '\\') return false;
+        if (c == '<' || c == '>' || c == ':' || c == '|' || c == '?' || c == '*') return false;
     }
+
+    if (path.back() == ' ' || path.back() == '.') return false;
 
     // ".." が含まれていれば不正
     if (path.find("..") != std::string::npos) {
@@ -128,6 +133,18 @@ bool is_valid_path(const std::string& path) {
 
     // 空文字列も無効扱い
     if (path.empty()) {
+        return false;
+    }
+
+    std::string stem = path.substr(0, path.find('.'));
+    std::transform(stem.begin(), stem.end(), stem.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (stem == "con" || stem == "prn" || stem == "aux" || stem == "nul") {
+        return false;
+    }
+    if (stem.size() == 4 &&
+        (stem.rfind("com", 0) == 0 || stem.rfind("lpt", 0) == 0) &&
+        stem[3] >= '1' && stem[3] <= '9') {
         return false;
     }
 
@@ -155,7 +172,7 @@ static std::vector<uint8_t> make_response_bytes(int status, const std::string& r
 }
 
 bool isValidGameCd(const std::string& gamecd) {
-    if (gamecd.empty()) {
+    if (gamecd.empty() || gamecd.size() > 6) {
         return false;
     }
 
