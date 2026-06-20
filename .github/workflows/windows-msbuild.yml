@@ -19,7 +19,7 @@ jobs:
       OPENSSL_VERSION: 1.1.1w
       OPENSSL_PREFIX: ${{ github.workspace }}/openssl-1.1.1w
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Restore OpenSSL cache
         id: cache-openssl
@@ -71,7 +71,7 @@ jobs:
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Restore OpenSSL cache
         id: cache-openssl
