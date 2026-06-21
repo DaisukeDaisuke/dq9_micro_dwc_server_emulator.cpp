@@ -4,8 +4,8 @@ setlocal
 
 REM Docker build
 docker build . -t openssl111w-mingw:local ^
-  --build-arg OPENSSL_TAG=openssl-3.0.20 ^
-  --build-arg OPENSSL_DIR=openssl-3.0.20
+  --build-arg OPENSSL_TAG=openssl-3.0.21 ^
+  --build-arg OPENSSL_DIR=openssl-3.0.21
 
 REM Create container and capture container ID
 for /f %%i in ('docker create openssl111w-mingw:local') do set CID=%%i
