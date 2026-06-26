@@ -23,7 +23,7 @@ jobs:
 
       - name: Restore OpenSSL cache
         id: cache-openssl
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.OPENSSL_PREFIX }}
           key: openssl-${{ env.OPENSSL_VERSION }}-linux
@@ -75,7 +75,7 @@ jobs:
 
       - name: Restore OpenSSL cache
         id: cache-openssl
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.OPENSSL_INSTALL }}
           key: openssl-${{ env.OPENSSL_VERSION }}-windows-msvc
