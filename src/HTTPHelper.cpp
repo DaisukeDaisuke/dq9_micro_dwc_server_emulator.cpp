@@ -104,7 +104,14 @@ void HTTPHelper::run_http_server(ServerContext& ctx, int port) {
         //bufは\x00がないため、出力禁止
         term << "[http] Received conntest request!" << std::endl;
 
-        send(client, resp, (int)(sizeof(resp) - 1), 0);
+        std::size_t sent = 0;
+        const std::size_t response_size = sizeof(resp) - 1;
+        while (sent < response_size) {
+            const int n = send(client, resp + sent,
+                static_cast<int>(response_size - sent), 0);
+            if (n <= 0) break;
+            sent += static_cast<std::size_t>(n);
+        }
         socket_close(client);
     }
 }

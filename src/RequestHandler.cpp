@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -37,36 +38,42 @@ bool base64_decode_star_as_pad(const std::string& input, std::string& output) {
         table_initialized = true;
     }
 
-    std::vector<uint8_t> buf;
-    buf.reserve(input.size() * 3 / 4);
-
-    int val = 0;
-    int valb = -8;
-
-    for (unsigned char c : input) {
-        if (c == '*') {
-            c = '='; // '*' を '=' として扱う
-        }
-
-        if (c == '=') {
-            break;
-        }
-
-        int8_t d = decode_table[c];
-        if (d == -1) {
-            return false; // 不正な文字
-        }
-
-        val = (val << 6) + d;
-        valb += 6;
-        if (valb >= 0) {
-            buf.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
-            valb -= 8;
-        }
+    output.clear();
+    if (input.empty() || input.size() > MAX_ENCODED_PARAM_BYTES ||
+        (input.size() % 4) != 0) {
+        return false;
     }
 
-    output.assign(buf.begin(), buf.end());
-    return true;
+    output.reserve((input.size() / 4) * 3);
+    for (std::size_t i = 0; i < input.size(); i += 4) {
+        int values[4]{};
+        int padding = 0;
+        for (int j = 0; j < 4; ++j) {
+            unsigned char c = static_cast<unsigned char>(input[i + j]);
+            if (c == '*') c = '=';
+            if (c == '=') {
+                if (j < 2 || i + 4 != input.size()) return false;
+                ++padding;
+                values[j] = 0;
+            } else {
+                if (padding != 0) return false;
+                const int8_t decoded = decode_table[c];
+                if (decoded < 0) return false;
+                values[j] = decoded;
+            }
+        }
+        if (padding > 2) return false;
+
+        const uint32_t block =
+            (static_cast<uint32_t>(values[0]) << 18) |
+            (static_cast<uint32_t>(values[1]) << 12) |
+            (static_cast<uint32_t>(values[2]) << 6) |
+            static_cast<uint32_t>(values[3]);
+        output.push_back(static_cast<char>((block >> 16) & 0xff));
+        if (padding < 2) output.push_back(static_cast<char>((block >> 8) & 0xff));
+        if (padding == 0) output.push_back(static_cast<char>(block & 0xff));
+    }
+    return output.size() <= MAX_DECODED_PARAM_BYTES;
 }
 
 
@@ -422,9 +429,34 @@ bool build_safe_dlc_path(
     if (!contents.empty() && contents[0] == '/')
         return false;
 
-    // 4) 最終パス生成
-    out_path = "./dlc/" + gamecd + "/" + contents;
+    // Resolve existing symlinks/junctions and require the result to remain below
+    // the selected game directory. Lexical checks alone do not provide this.
+    std::error_code ec;
+    const std::filesystem::path base =
+        std::filesystem::weakly_canonical(std::filesystem::path("./dlc") / gamecd, ec);
+    if (ec) return false;
+    const std::filesystem::path candidate =
+        std::filesystem::weakly_canonical(base / contents, ec);
+    if (ec) return false;
 
+    auto base_it = base.begin();
+    auto candidate_it = candidate.begin();
+    for (; base_it != base.end(); ++base_it, ++candidate_it) {
+        if (candidate_it == candidate.end()) return false;
+#ifdef _WIN32
+        std::string lhs = base_it->string();
+        std::string rhs = candidate_it->string();
+        std::transform(lhs.begin(), lhs.end(), lhs.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::transform(rhs.begin(), rhs.end(), rhs.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (lhs != rhs) return false;
+#else
+        if (*base_it != *candidate_it) return false;
+#endif
+    }
+    if (candidate_it == candidate.end()) return false;
+    out_path = candidate.string();
     return true;
 }
 
