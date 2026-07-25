@@ -89,6 +89,9 @@ static bool dns_read_name(const std::vector<uint8_t>& msg, size_t& off, std::str
             continue;
         }
 
+        // 01xxxxxx and 10xxxxxx are reserved DNS label encodings.
+        if ((len & 0xC0) != 0 || len > 63) return false;
+
         if (len == 0) {
             i += 1;
             break;
@@ -97,6 +100,7 @@ static bool dns_read_name(const std::vector<uint8_t>& msg, size_t& off, std::str
         if (i + 1 + len > msg.size()) return false;
         if (!out_name.empty()) out_name.push_back('.');
         out_name.append(reinterpret_cast<const char*>(&msg[i + 1]), reinterpret_cast<const char*>(&msg[i + 1 + len]));
+        if (out_name.size() > 253) return false;
         i += 1 + len;
 
         if (++guard > 256) return false;

@@ -43,6 +43,15 @@ static const size_t MAX_BODY_BYTES = 5u * 1024u * 1024u; // 5MB上限
 static constexpr int CLIENT_IO_TIMEOUT_MS = 30 * 1000;
 static constexpr int MAX_SSL_RETRY = 1000;
 
+static bool is_http_token(const std::string& value) {
+    if (value.empty()) return false;
+    static constexpr const char* separators = "()<>@,;:\\\"/[]?={} \t";
+    for (unsigned char c : value) {
+        if (c <= 0x20 || c >= 0x7f || std::strchr(separators, c)) return false;
+    }
+    return true;
+}
+
 bool ssl_write_split(SSL* ssl, const std::vector<uint8_t>& data)
 {
     size_t off = 0;
@@ -230,6 +239,13 @@ parse_headers(const std::string& header_block,
         std::string k = line.substr(0, pos);
         std::string v = line.substr(pos + 1);
 
+        // Whitespace before ':' is forbidden and can otherwise cause two HTTP
+        // parsers to disagree about the request boundary.
+        if (k.empty() || std::isspace(static_cast<unsigned char>(k.back()))) {
+            error = true;
+            return {};
+        }
+
         while (!k.empty() && isspace((unsigned char)k.back()))
             k.pop_back();
 
@@ -238,7 +254,7 @@ parse_headers(const std::string& header_block,
         while (!v.empty() && isspace((unsigned char)v.back()))
             v.pop_back();
 
-        if (k.empty() ||
+        if (!is_http_token(k) ||
             Safety::contains_ctl_or_nul(k) ||
             Safety::contains_ctl_or_nul(v)) {
             error = true;
@@ -255,6 +271,28 @@ parse_headers(const std::string& header_block,
         }
 
         headers[k] = v;
+    }
+
+    // This server only implements fixed-length request bodies. Reject transfer
+    // codings instead of ambiguously ignoring them.
+    if (headers.find("transfer-encoding") != headers.end()) {
+        error = true;
+        return {};
+    }
+
+    std::istringstream request_stream(request_line);
+    std::string method, target, version, extra;
+    if (!(request_stream >> method >> target >> version) || (request_stream >> extra) ||
+        !is_http_token(method) || target.empty() || target.front() != '/' ||
+        Safety::contains_ctl_or_nul(target) ||
+        (version != "HTTP/1.0" && version != "HTTP/1.1")) {
+        error = true;
+        return {};
+    }
+
+    if (version == "HTTP/1.1" && headers.find("host") == headers.end()) {
+        error = true;
+        return {};
     }
 
     return headers;
@@ -329,6 +367,12 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
         std::cerr << "Certificate/key load failed2" << std::endl;
         ERR_print_errors_fp(stderr);
         std::cerr << std::flush;
+        return 1;
+    }
+
+    if (SSL_CTX_check_private_key(ctx) != 1) {
+        term << "[https][" << port << "] Certificate/private key mismatch" << std::endl;
+        ERR_print_errors_fp(stderr);
         return 1;
     }
 
@@ -482,7 +526,13 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
 
                 std::vector<char> tmp(chunk);
                 int r = SSL_read(ssl, tmp.data(), (int)tmp.size());
-                if (r <= 0) break;
+                if (r <= 0) {
+                    const int ssl_error = SSL_get_error(ssl, r);
+                    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) {
+                        continue;
+                    }
+                    break;
+                }
 
                 size_t can_take = std::min((size_t)r, content_len - bodyv.size());
                 bodyv.insert(bodyv.end(), tmp.data(), tmp.data() + can_take);
