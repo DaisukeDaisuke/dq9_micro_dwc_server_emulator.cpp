@@ -67,7 +67,7 @@ jobs:
     env:
       BUILD_DIR: cmake-build-Release
       PACKAGE_DIR: windows-msbuild
-      OPENSSL_VERSION: 3.0.21
+      OPENSSL_VERSION: 3.0.22
       OPENSSL_SRC: ${{ github.workspace }}\openssl\openssl
       OPENSSL_INSTALL: ${{ github.workspace }}\openssl\install
     steps:

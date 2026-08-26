@@ -4,7 +4,7 @@ project(dq9-server CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# applink.c = 3.0.21
+# applink.c = 3.0.22
 add_executable(dq9-server src/main.cpp
         src/dns.cpp
         src/dns.h
