@@ -337,7 +337,7 @@ int SSLHelper::Main(ServerContext& ctx2, int port) {
 
 
     // ★ここ：SSLv3ハンドシェイク処理は維持（消さない）
-    SSL_CTX* ctx = SSL_CTX_new(TLS_server_method());
+    SSL_CTX* ctx = SSL_CTX_new_ex(nullptr, nullptr, TLS_server_method());
     if (!ctx) {
         std::cerr << "SSL_CTX_new failed" << std::endl;
         ERR_print_errors_fp(stderr);
